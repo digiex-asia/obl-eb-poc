@@ -28,15 +28,16 @@ import {
     PanelLeft,
     Heading,
     AlignLeft,
+    Minus as MinusIcon,
+    SeparatorHorizontal,
 } from 'lucide-react';
 
 // --- 1. TYPES & CONSTANTS ---
 const CANVAS_WIDTH = 600;
-const DEFAULT_BG_COLOR = '#ffffff';
 const PAGE_BG_COLOR = '#f3f4f6';
 const PRIMARY_COLOR = '#3b82f6';
-const SELECTION_COLOR = '#d946ef'; // Pink
-const ROW_HOVER_COLOR = '#60a5fa'; // Light Blue
+const SELECTION_COLOR = '#d946ef';
+const ROW_HOVER_COLOR = '#60a5fa';
 const DROP_TARGET_COLOR = '#10b981';
 const COLUMN_GUIDE_COLOR = '#e879f9';
 const REORDER_LINE_COLOR = '#3b82f6';
@@ -50,7 +51,9 @@ type ElementType =
     | 'polygon'
     | 'image'
     | 'text'
-    | 'button';
+    | 'button'
+    | 'divider'
+    | 'spacer';
 
 interface EditorElement {
     id: string;
@@ -91,6 +94,11 @@ type Action =
           layout: number[];
           index?: number;
           forceAdd?: boolean;
+          minHeight?: number;
+      }
+    | {
+          type: 'ADD_SPECIAL_BLOCK';
+          blockType: 'freeform' | 'divider' | 'spacer';
       }
     | { type: 'DUPLICATE_ROW'; rowId: string }
     | { type: 'DUPLICATE_SELECTION' }
@@ -235,6 +243,61 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
             return state;
         }
 
+        case 'ADD_SPECIAL_BLOCK': {
+            const { blockType } = action;
+            const newRowId = generateId();
+            const newRow: EditorRow = {
+                id: newRowId,
+                height: blockType === 'freeform' ? 300 : 100,
+                layout: [100],
+                elements: [],
+                backgroundColor: '#ffffff',
+            };
+
+            if (blockType === 'divider') {
+                newRow.elements.push({
+                    id: generateId(),
+                    type: 'divider',
+                    x: 20,
+                    y: 45,
+                    width: CANVAS_WIDTH - 40,
+                    height: 10,
+                    fill: '#d1d5db',
+                });
+                newRow.height = 100;
+            } else if (blockType === 'spacer') {
+                newRow.elements.push({
+                    id: generateId(),
+                    type: 'spacer',
+                    x: 0,
+                    y: 0,
+                    width: CANVAS_WIDTH,
+                    height: 50,
+                    fill: 'transparent',
+                });
+                newRow.height = 50;
+            }
+
+            let insertIndex = state.rows.length;
+            if (state.selectedRowId) {
+                const selectedIndex = state.rows.findIndex(
+                    (r) => r.id === state.selectedRowId
+                );
+                if (selectedIndex !== -1) insertIndex = selectedIndex + 1;
+            }
+
+            const newRows = [...state.rows];
+            newRows.splice(insertIndex, 0, newRow);
+
+            return {
+                ...state,
+                rows: newRows,
+                selectedRowId: newRowId,
+                selectedElementId:
+                    newRow.elements.length > 0 ? newRow.elements[0].id : null,
+            };
+        }
+
         case 'ADD_OR_UPDATE_ROW_LAYOUT': {
             if (!action.forceAdd && state.selectedRowId) {
                 return {
@@ -249,7 +312,7 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
 
             const newRow: EditorRow = {
                 id: generateId(),
-                height: 150,
+                height: action.minHeight || 150,
                 layout: action.layout,
                 elements: [],
                 backgroundColor: '#ffffff',
@@ -424,6 +487,14 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
                         finalW = 100;
                         finalH = 40;
                     }
+                    if (action.elementType === 'divider') {
+                        finalW = 200;
+                        finalH = 10;
+                    }
+                    if (action.elementType === 'spacer') {
+                        finalW = 100;
+                        finalH = 50;
+                    }
 
                     if (
                         typeof action.x === 'number' &&
@@ -434,19 +505,19 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
                                 (c) =>
                                     action.x! >= c.start && action.x! <= c.end
                             ) || colRanges[0];
-                        finalW = Math.min(targetCol.width * 0.8, 150);
-                        if (
-                            action.elementType === 'text' ||
-                            action.elementType === 'button'
+                        if (action.elementType === 'divider')
+                            finalW = targetCol.width * 0.9;
+                        else if (
+                            action.elementType !== 'text' &&
+                            action.elementType !== 'button' &&
+                            action.elementType !== 'spacer'
                         ) {
-                            finalH = 40;
-                        } else {
+                            finalW = Math.min(targetCol.width * 0.8, 150);
                             finalH =
                                 action.elementType === 'image'
                                     ? finalW
                                     : finalW;
                         }
-                        // Center the element on the mouse cursor (drop point)
                         finalX = action.x - finalW / 2;
                         finalY = action.y - finalH / 2;
                     } else {
@@ -465,17 +536,19 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
                             targetColIndex =
                                 row.elements.length % colRanges.length;
                         const targetCol = colRanges[targetColIndex];
-                        finalW = Math.min(targetCol.width * 0.8, 150);
-                        if (
-                            action.elementType === 'text' ||
-                            action.elementType === 'button'
-                        )
-                            finalH = 40;
-                        else
+                        if (action.elementType === 'divider')
+                            finalW = targetCol.width * 0.9;
+                        else if (
+                            action.elementType !== 'text' &&
+                            action.elementType !== 'button' &&
+                            action.elementType !== 'spacer'
+                        ) {
+                            finalW = Math.min(targetCol.width * 0.8, 150);
                             finalH =
                                 action.elementType === 'image'
                                     ? finalW
                                     : finalW;
+                        }
                         finalX = targetCol.center - finalW / 2;
                         finalY = 20;
                     }
@@ -494,6 +567,7 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
                         src: action.src,
                         text: action.text,
                     };
+
                     if (action.elementType === 'rect') newEl.fill = '#6366f1';
                     if (action.elementType === 'circle') newEl.fill = '#10b981';
                     if (action.elementType === 'triangle')
@@ -503,6 +577,10 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
                         newEl.fill = '#3b82f6';
                     if (action.elementType === 'button') newEl.fill = '#3b82f6';
                     if (action.elementType === 'text')
+                        newEl.fill = 'transparent';
+                    if (action.elementType === 'divider')
+                        newEl.fill = '#d1d5db';
+                    if (action.elementType === 'spacer')
                         newEl.fill = 'transparent';
 
                     return { ...row, elements: [...row.elements, newEl] };
@@ -629,7 +707,8 @@ const editorReducer = (state: EditorState, action: Action): EditorState => {
 const useCanvasEngine = (
     canvasRef: React.RefObject<HTMLCanvasElement>,
     containerRef: React.RefObject<HTMLDivElement>,
-    state: EditorState
+    state: EditorState,
+    dragInfo: React.MutableRefObject<any>
 ) => {
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
     const [imagesLoaded, setImagesLoaded] = useState(0);
@@ -769,6 +848,28 @@ const useCanvasEngine = (
             });
         };
 
+        // Helper to parse Gradient strings
+        const getFillStyle = (
+            ctx: CanvasRenderingContext2D,
+            x: number,
+            y: number,
+            w: number,
+            h: number,
+            color: string | undefined
+        ) => {
+            if (!color) return 'transparent';
+            if (color.startsWith('linear-gradient')) {
+                const colors = color.match(/#[a-fA-F0-9]{6}/g);
+                if (colors && colors.length >= 2) {
+                    const grad = ctx.createLinearGradient(x, y, x + w, y);
+                    grad.addColorStop(0, colors[0]);
+                    grad.addColorStop(1, colors[1]);
+                    return grad;
+                }
+            }
+            return color;
+        };
+
         const render = () => {
             const dpr = window.devicePixelRatio || 1;
             const viewportWidth = container.clientWidth;
@@ -814,6 +915,8 @@ const useCanvasEngine = (
             ctx.shadowColor = 'transparent';
 
             let currentY = paperY;
+            const logicalScrollY = scrollY / state.zoom;
+            const logicalViewportH = viewportHeight / state.zoom;
 
             // PASS 1: Draw Content & Elements
             let selectedRowY = 0;
@@ -821,7 +924,6 @@ const useCanvasEngine = (
             let hoveredRowY = 0;
             let hoveredRowData: EditorRow | null = null;
 
-            // Special check for selected element to draw it last (z-index fix)
             let selectedElementRowY = 0;
             let selectedElement: EditorElement | null = null;
 
@@ -843,8 +945,53 @@ const useCanvasEngine = (
                 ctx.translate(0, currentY);
 
                 // Row Background
-                ctx.fillStyle = row.backgroundColor || '#ffffff';
+                const rowFill = getFillStyle(
+                    ctx,
+                    0,
+                    0,
+                    CANVAS_WIDTH,
+                    row.height,
+                    row.backgroundColor
+                );
+                ctx.fillStyle = rowFill;
                 ctx.fillRect(0, 0, CANVAS_WIDTH, row.height);
+
+                // Row Hover Effect
+                if ((isRowHovered || isDragOver) && !isRowSelected) {
+                    ctx.strokeStyle = ROW_HOVER_COLOR;
+                    ctx.lineWidth = 1.5 / state.zoom;
+                    ctx.strokeRect(0, 0, CANVAS_WIDTH, row.height);
+
+                    const dragX = CANVAS_WIDTH + 10 / state.zoom;
+                    ctx.fillStyle = ROW_HOVER_COLOR;
+                    const dotSize = 2 / state.zoom;
+                    const gap = 4 / state.zoom;
+                    for (let i = 0; i < 2; i++)
+                        for (let j = 0; j < 3; j++) {
+                            ctx.beginPath();
+                            ctx.arc(
+                                dragX + i * gap,
+                                row.height / 2 + j * gap - gap,
+                                dotSize,
+                                0,
+                                Math.PI * 2
+                            );
+                            ctx.fill();
+                        }
+                    const leftDragX = -(20 / state.zoom);
+                    for (let i = 0; i < 2; i++)
+                        for (let j = 0; j < 3; j++) {
+                            ctx.beginPath();
+                            ctx.arc(
+                                leftDragX + i * gap,
+                                row.height / 2 + j * gap - gap,
+                                dotSize,
+                                0,
+                                Math.PI * 2
+                            );
+                            ctx.fill();
+                        }
+                }
 
                 // Draw Drag Target Highlight
                 if (
@@ -869,22 +1016,45 @@ const useCanvasEngine = (
                 // Grid
                 if (isRowSelected) {
                     let colX = 0;
+                    const isResizing = dragInfo.current.type === 'colResize';
+
                     row.layout.forEach((pct, i) => {
                         const w = (CANVAS_WIDTH * pct) / 100;
                         ctx.strokeStyle = 'rgba(232, 121, 249, 0.3)';
                         ctx.setLineDash([]);
                         ctx.lineWidth = 1 / state.zoom;
                         ctx.strokeRect(colX, 0, w, row.height);
-                        if (w > 30) {
+
+                        if (isResizing && w > 30) {
+                            const labelText = `${Math.round(pct)}%`;
+                            const labelW = 36 / state.zoom;
+                            const labelH = 18 / state.zoom;
+                            const labelX = colX + w / 2 - labelW / 2;
+                            const labelY = row.height - 24 / state.zoom;
+
                             ctx.fillStyle = COLUMN_GUIDE_COLOR;
+                            ctx.beginPath();
+                            drawRoundedRect(
+                                ctx,
+                                labelX,
+                                labelY,
+                                labelW,
+                                labelH,
+                                4 / state.zoom
+                            );
+                            ctx.fill();
+
+                            ctx.fillStyle = 'white';
                             ctx.font = `${10 / state.zoom}px sans-serif`;
                             ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
                             ctx.fillText(
-                                `${Math.round(pct)}%`,
+                                labelText,
                                 colX + w / 2,
-                                12 / state.zoom
+                                labelY + labelH / 2
                             );
                         }
+
                         if (i < row.layout.length - 1) {
                             const dividerX = colX + w;
                             ctx.strokeStyle = COLUMN_GUIDE_COLOR;
@@ -916,7 +1086,6 @@ const useCanvasEngine = (
                 row.elements.forEach((el) => {
                     const isElSelected = state.selectedElementId === el.id;
 
-                    // Defer drawing selected element to end of loop
                     if (isElSelected) {
                         selectedElement = el;
                         selectedElementRowY = currentY;
@@ -928,8 +1097,16 @@ const useCanvasEngine = (
                     ctx.save();
                     ctx.translate(el.x, el.y);
 
-                    // Standard Element Render
-                    ctx.fillStyle = el.fill || '#94a3b8';
+                    const elFill = getFillStyle(
+                        ctx,
+                        0,
+                        0,
+                        el.width,
+                        el.height,
+                        el.fill || '#94a3b8'
+                    );
+                    ctx.fillStyle = elFill;
+
                     if (el.type === 'rect') {
                         ctx.beginPath();
                         drawRoundedRect(ctx, 0, 0, el.width, el.height, 4);
@@ -997,6 +1174,17 @@ const useCanvasEngine = (
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'top';
                         ctx.fillText(el.text || 'Heading Text', 0, 0);
+                    } else if (el.type === 'divider') {
+                        ctx.fillStyle = el.fill || '#d1d5db';
+                        ctx.fillRect(0, el.height / 2 - 1, el.width, 2);
+                    } else if (el.type === 'spacer') {
+                        if (isHovered) {
+                            ctx.fillStyle = 'rgba(0,0,0,0.03)';
+                            ctx.strokeStyle = '#e5e7eb';
+                            ctx.setLineDash([4, 4]);
+                            ctx.strokeRect(0, 0, el.width, el.height);
+                            ctx.setLineDash([]);
+                        }
                     }
 
                     if (isHovered) {
@@ -1012,7 +1200,6 @@ const useCanvasEngine = (
                 currentY += row.height;
             });
 
-            // Draw Reorder Line if active
             if (state.reorderTargetIndex !== null) {
                 let targetY = paperY;
                 for (let i = 0; i < state.reorderTargetIndex; i++)
@@ -1026,7 +1213,6 @@ const useCanvasEngine = (
                 ctx.stroke();
             }
 
-            // PASS 2: Draw Row Controls ON TOP (Hovered)
             if (hoveredRowData && !selectedRowData) {
                 const row = hoveredRowData;
                 const logicalViewportLeft = -paperScreenX / state.zoom;
@@ -1047,7 +1233,6 @@ const useCanvasEngine = (
                 ctx.restore();
             }
 
-            // PASS 3: Draw Selected Row Controls ON TOP (Selected)
             if (selectedRowData && state.selectedRowId) {
                 const row = selectedRowData;
                 const logicalViewportLeft = -paperScreenX / state.zoom;
@@ -1136,15 +1321,22 @@ const useCanvasEngine = (
                 ctx.restore();
             }
 
-            // PASS 4: Draw Selected Element LAST (On Top of Everything)
             if (selectedElement && selectedElementRowY) {
                 const el = selectedElement;
                 ctx.save();
                 ctx.translate(0, selectedElementRowY);
                 ctx.translate(el.x, el.y);
 
-                // Redraw Element content for z-index
-                ctx.fillStyle = el.fill || '#94a3b8';
+                const elFill = getFillStyle(
+                    ctx,
+                    0,
+                    0,
+                    el.width,
+                    el.height,
+                    el.fill || '#94a3b8'
+                );
+                ctx.fillStyle = elFill;
+
                 if (el.type === 'rect') {
                     ctx.beginPath();
                     drawRoundedRect(ctx, 0, 0, el.width, el.height, 4);
@@ -1212,15 +1404,22 @@ const useCanvasEngine = (
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'top';
                     ctx.fillText(el.text || 'Heading Text', 0, 0);
+                } else if (el.type === 'divider') {
+                    ctx.fillStyle = el.fill || '#d1d5db';
+                    ctx.fillRect(0, el.height / 2 - 1, el.width, 2);
+                } else if (el.type === 'spacer') {
+                    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+                    ctx.strokeStyle = '#d1d5db';
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(0, 0, el.width, el.height);
+                    ctx.setLineDash([]);
                 }
 
-                // Selection Box
                 ctx.strokeStyle = SELECTION_COLOR;
                 ctx.lineWidth = 1 / state.zoom;
                 ctx.shadowColor = 'transparent';
                 ctx.strokeRect(0, 0, el.width, el.height);
 
-                // Resize Handles
                 drawResizeHandles(ctx, { ...el, x: 0, y: 0 });
 
                 ctx.restore();
@@ -1435,7 +1634,34 @@ const SAMPLE_IMAGES = [
     'https://images.pexels.com/photos/1170986/pexels-photo-1170986.jpeg?auto=compress&cs=tinysrgb&w=200',
     'https://images.pexels.com/photos/1761279/pexels-photo-1761279.jpeg?auto=compress&cs=tinysrgb&w=200',
 ];
-const Sidebar = ({ onAddRow, onAddElement }: any) => {
+
+// New Components for Blocks Panel (Unchanged)
+const FreeFormBlock = ({ onClick }: { onClick: () => void }) => (
+    <div
+        onClick={onClick}
+        className="w-full h-20 bg-gray-50 border border-gray-200 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 text-gray-500 hover:text-blue-500 font-medium text-sm transition"
+    >
+        Free-Form
+    </div>
+);
+const DividerBlock = ({ onClick }: { onClick: () => void }) => (
+    <div
+        onClick={onClick}
+        className="w-full h-10 bg-gray-50 border border-gray-200 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 px-4"
+    >
+        <div className="w-full h-px bg-gray-400" />
+    </div>
+);
+const SpacerBlock = ({ onClick }: { onClick: () => void }) => (
+    <div
+        onClick={onClick}
+        className="w-full h-10 bg-gray-50 border border-gray-200 rounded flex items-center justify-center cursor-pointer hover:border-blue-400"
+    >
+        <div className="w-full border-t border-dashed border-gray-300" />
+    </div>
+);
+
+const Sidebar = ({ onAddRow, onAddElement, onAddSpecialBlock }: any) => {
     const [activeTab, setActiveTab] = useState<
         'blocks' | 'media' | 'shapes' | 'text' | 'button'
     >('blocks');
@@ -1506,34 +1732,88 @@ const Sidebar = ({ onAddRow, onAddElement }: any) => {
             </div>
             <div className="w-[280px] h-full bg-white overflow-y-auto p-6">
                 {activeTab === 'blocks' && (
-                    <div className="space-y-3">
-                        <h1 className="text-2xl font-bold mb-4">Blocks</h1>
-                        <DraggableLayoutItem
-                            layout={[100]}
-                            onClick={() => onAddRow([100])}
-                        />
-                        <DraggableLayoutItem
-                            layout={[50, 50]}
-                            onClick={() => onAddRow([50, 50])}
-                        />
-                        <DraggableLayoutItem
-                            layout={[100 / 3, 100 / 3, 100 / 3]}
-                            onClick={() =>
-                                onAddRow([100 / 3, 100 / 3, 100 / 3])
-                            }
-                        />
-                        <DraggableLayoutItem
-                            layout={[25, 25, 25, 25]}
-                            onClick={() => onAddRow([25, 25, 25, 25])}
-                        />
-                        <DraggableLayoutItem
-                            layout={[30, 70]}
-                            onClick={() => onAddRow([30, 70])}
-                        />
-                        <DraggableLayoutItem
-                            layout={[70, 30]}
-                            onClick={() => onAddRow([70, 30])}
-                        />
+                    <div className="space-y-6">
+                        <div>
+                            <h1 className="text-2xl font-bold mb-1">
+                                HTML Block
+                            </h1>
+                            <p className="text-xs text-gray-500 mb-4">
+                                Responsive, editable, and email-safe.
+                            </p>
+                            <div className="space-y-3">
+                                <DraggableLayoutItem
+                                    layout={[100]}
+                                    onClick={() => onAddRow([100])}
+                                />
+                                <DraggableLayoutItem
+                                    layout={[50, 50]}
+                                    onClick={() => onAddRow([50, 50])}
+                                />
+                                <DraggableLayoutItem
+                                    layout={[100 / 3, 100 / 3, 100 / 3]}
+                                    onClick={() =>
+                                        onAddRow([100 / 3, 100 / 3, 100 / 3])
+                                    }
+                                />
+                                <DraggableLayoutItem
+                                    layout={[25, 25, 25, 25]}
+                                    onClick={() => onAddRow([25, 25, 25, 25])}
+                                />
+                                <DraggableLayoutItem
+                                    layout={[30, 70]}
+                                    onClick={() => onAddRow([30, 70])}
+                                />
+                                <DraggableLayoutItem
+                                    layout={[70, 30]}
+                                    onClick={() => onAddRow([70, 30])}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <h2 className="text-sm font-bold text-gray-900 mb-2">
+                                Free-Form Block
+                            </h2>
+                            <p className="text-xs text-gray-500 mb-3">
+                                Design without limits. Exports as image.
+                            </p>
+                            <FreeFormBlock
+                                onClick={() => onAddSpecialBlock('freeform')}
+                            />
+                        </div>
+                        <div>
+                            <h2 className="text-sm font-bold text-gray-900 mb-2">
+                                Spacers & Dividers
+                            </h2>
+                            <div className="space-y-3">
+                                <div
+                                    draggable
+                                    onDragStart={(e) =>
+                                        e.dataTransfer.setData('type', 'spacer')
+                                    }
+                                >
+                                    <SpacerBlock
+                                        onClick={() =>
+                                            onAddSpecialBlock('spacer')
+                                        }
+                                    />
+                                </div>
+                                <div
+                                    draggable
+                                    onDragStart={(e) =>
+                                        e.dataTransfer.setData(
+                                            'type',
+                                            'divider'
+                                        )
+                                    }
+                                >
+                                    <DividerBlock
+                                        onClick={() =>
+                                            onAddSpecialBlock('divider')
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
                 {activeTab === 'media' && (
@@ -1726,40 +2006,46 @@ const App = () => {
     const totalHeight = state.rows.reduce((acc, r) => acc + r.height, 0);
     const totalLogicalHeight = Math.max(800, totalHeight + 100) * state.zoom;
 
-    useCanvasEngine(canvasRef, containerRef, state, dispatch);
+    // Use a stable ref for dragInfo to avoid closure stale state in window listeners
+    const dragInfo = useRef<{
+        active: boolean;
+        type:
+            | 'element'
+            | 'rowResize'
+            | 'colResize'
+            | 'elementResize'
+            | 'rowReorder';
+        rowId: string | null;
+        elId: string | null;
+        dividerIndex?: number;
+        handle?: string;
+        startX: number;
+        startY: number;
+        initialX: number;
+        initialY: number;
+        initialW: number;
+        initialH: number;
+        draggedRowIndex?: number;
+    }>({
+        active: false,
+        type: 'element',
+        rowId: null,
+        elId: null,
+        startX: 0,
+        startY: 0,
+        initialX: 0,
+        initialY: 0,
+        initialW: 0,
+        initialH: 0,
+    });
 
-    // Add window-level event listeners for smooth dragging
+    // Fix for dispatch in hooks
+    const dispatchRef = useRef(dispatch);
     useEffect(() => {
-        const handleWindowMouseMove = (e: MouseEvent) => {
-            if (dragInfo.current.active) {
-                // Re-use existing logic but with window event
-                // We need to manually call our handler logic here or expose it
-                // To keep it clean in this single file, we will just rely on the canvas listener
-                // BUT for "dragging out of stage" we really need window listener.
-                // Let's simulate the event object structure for our handler
-                const syntheticEvent = {
-                    clientX: e.clientX,
-                    clientY: e.clientY,
-                    preventDefault: () => {},
-                } as unknown as React.MouseEvent;
-                handleMouseMove(syntheticEvent);
-            }
-        };
+        dispatchRef.current = dispatch;
+    }, [dispatch]);
 
-        const handleWindowMouseUp = () => {
-            if (dragInfo.current.active) {
-                handleMouseUp();
-            }
-        };
-
-        window.addEventListener('mousemove', handleWindowMouseMove);
-        window.addEventListener('mouseup', handleWindowMouseUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleWindowMouseMove);
-            window.removeEventListener('mouseup', handleWindowMouseUp);
-        };
-    }, [state.zoom, state.rows]); // Re-bind when state changes to ensure closure freshness for dispatch
+    useCanvasEngine(canvasRef, containerRef, state, dragInfo);
 
     useEffect(() => {
         if (containerRef.current) {
@@ -1803,38 +2089,6 @@ const App = () => {
         return () => container.removeEventListener('wheel', handleWheel);
     }, [state.zoom]);
 
-    const dragInfo = useRef<{
-        active: boolean;
-        type:
-            | 'element'
-            | 'rowResize'
-            | 'colResize'
-            | 'elementResize'
-            | 'rowReorder';
-        rowId: string | null;
-        elId: string | null;
-        dividerIndex?: number;
-        handle?: string;
-        startX: number;
-        startY: number;
-        initialX: number;
-        initialY: number;
-        initialW: number;
-        initialH: number;
-        draggedRowIndex?: number;
-    }>({
-        active: false,
-        type: 'element',
-        rowId: null,
-        elId: null,
-        startX: 0,
-        startY: 0,
-        initialX: 0,
-        initialY: 0,
-        initialW: 0,
-        initialH: 0,
-    });
-
     const getCanvasCoords = (e: React.MouseEvent) => {
         const canvas = canvasRef.current;
         const container = containerRef.current;
@@ -1864,6 +2118,7 @@ const App = () => {
         };
     };
 
+    // Drag Over Logic
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         const canvas = canvasRef.current;
@@ -1884,7 +2139,6 @@ const App = () => {
         for (const row of state.rows) {
             const rowTop = currentY;
             const rowBottom = currentY + row.height;
-
             if (logicalY >= rowTop && logicalY <= rowBottom) {
                 let colAccumX = 0;
                 for (let i = 0; i < row.layout.length; i++) {
@@ -1912,7 +2166,6 @@ const App = () => {
         let foundHit = false;
         let currentY = 0;
 
-        // Viewport Relative Calculations for Controls
         const container = containerRef.current;
         const viewportWidth = container ? container.clientWidth : 0;
         const paperScreenW = CANVAS_WIDTH * state.zoom;
@@ -1921,24 +2174,117 @@ const App = () => {
         const logicalViewportWidth = viewportWidth / state.zoom;
         const logicalRightEdge = logicalViewportLeft + logicalViewportWidth;
 
-        for (let i = 0; i < state.rows.length; i++) {
+        // 1. Check Global Elements First
+        for (let i = state.rows.length - 1; i >= 0; i--) {
             const row = state.rows[i];
-            const rowTop = currentY;
-            const rowBottom = currentY + row.height;
+            const rowTop = currentY; // Wait, this is wrong order if iterating backwards.
+            // We need forward loop for Y calculation, but reverse for hit test?
+            // Or just calculate Y map first.
+            // Simpler: Iterate Forward for Y, store rows with Y. Then reverse iterate that list.
+        }
 
-            // Check for hits (Controls outside row)
-            if (
-                coords.logicalY >= rowTop - 25 &&
-                coords.logicalY <= rowBottom + 25
-            ) {
-                // Check Resize Handle Hit FIRST (Bottom center pill)
-                // PRIORITY FIX: Check this before add buttons
+        // Let's rebuild currentY map
+        let yMap: {
+            row: EditorRow;
+            top: number;
+            bottom: number;
+            index: number;
+        }[] = [];
+        let tempY = 0;
+        state.rows.forEach((r, idx) => {
+            yMap.push({
+                row: r,
+                top: tempY,
+                bottom: tempY + r.height,
+                index: idx,
+            });
+            tempY += r.height;
+        });
+
+        // Reverse iterate for element hit (top-most first)
+        for (let i = yMap.length - 1; i >= 0; i--) {
+            const { row, top } = yMap[i];
+            const rowLocalY = coords.logicalY - top;
+
+            for (let j = row.elements.length - 1; j >= 0; j--) {
+                const el = row.elements[j];
+                const isSelected = state.selectedElementId === el.id;
+
+                if (isSelected) {
+                    const limit = 10 / state.zoom;
+                    const handles = [
+                        { name: 'tl', x: el.x, y: el.y },
+                        { name: 'tr', x: el.x + el.width, y: el.y },
+                        { name: 'bl', x: el.x, y: el.y + el.height },
+                        { name: 'br', x: el.x + el.width, y: el.y + el.height },
+                    ];
+                    for (let h of handles) {
+                        if (
+                            Math.abs(coords.paperX - h.x) <= limit &&
+                            Math.abs(rowLocalY - h.y) <= limit
+                        ) {
+                            dragInfo.current = {
+                                active: true,
+                                type: 'elementResize',
+                                rowId: row.id,
+                                elId: el.id,
+                                handle: h.name,
+                                startX: e.clientX,
+                                startY: e.clientY,
+                                initialX: el.x,
+                                initialY: el.y,
+                                initialW: el.width,
+                                initialH: el.height,
+                            };
+                            foundHit = true;
+                            break;
+                        }
+                    }
+                    if (foundHit) break;
+                }
+
+                if (
+                    coords.paperX >= el.x &&
+                    coords.paperX <= el.x + el.width &&
+                    rowLocalY >= el.y &&
+                    rowLocalY <= el.y + el.height
+                ) {
+                    dispatch({
+                        type: 'SELECT_ELEMENT',
+                        rowId: row.id,
+                        elId: el.id,
+                    });
+                    dragInfo.current = {
+                        active: true,
+                        type: 'element',
+                        rowId: row.id,
+                        elId: el.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initialX: el.x,
+                        initialY: el.y,
+                        initialH: 0,
+                        initialW: 0,
+                    };
+                    foundHit = true;
+                    break;
+                }
+            }
+            if (foundHit) break;
+        }
+
+        if (!foundHit) {
+            // 2. Check Controls
+            for (let i = 0; i < yMap.length; i++) {
+                const { row, top, bottom, index } = yMap[i];
+
+                // Controls Check
                 if (state.selectedRowId === row.id) {
                     const centerX = CANVAS_WIDTH / 2;
-                    // Resize Handle - stricter hit area (10px from bottom)
+                    // Resize Handle
                     if (
                         Math.abs(coords.paperX - centerX) < 30 &&
-                        Math.abs(coords.logicalY - rowBottom) < 10
+                        Math.abs(coords.logicalY - bottom) < 10
                     ) {
                         dragInfo.current = {
                             active: true,
@@ -1955,16 +2301,15 @@ const App = () => {
                         foundHit = true;
                         break;
                     }
-
-                    // Add Buttons (Shifted hitbox slightly away to avoid conflict)
+                    // Add Buttons
                     if (
                         Math.abs(coords.paperX - centerX) < 20 &&
-                        Math.abs(coords.logicalY - (rowTop - 20)) < 15
+                        Math.abs(coords.logicalY - (top - 20)) < 15
                     ) {
                         dispatch({
                             type: 'ADD_OR_UPDATE_ROW_LAYOUT',
                             layout: [100],
-                            index: i,
+                            index: index,
                             forceAdd: true,
                         });
                         foundHit = true;
@@ -1972,24 +2317,22 @@ const App = () => {
                     }
                     if (
                         Math.abs(coords.paperX - centerX) < 20 &&
-                        Math.abs(coords.logicalY - (rowBottom + 20)) < 15
+                        Math.abs(coords.logicalY - (bottom + 20)) < 15
                     ) {
                         dispatch({
                             type: 'ADD_OR_UPDATE_ROW_LAYOUT',
                             layout: [100],
-                            index: i + 1,
+                            index: index + 1,
                             forceAdd: true,
                         });
                         foundHit = true;
                         break;
                     }
-
-                    // Check for Row Reorder Handle (Dots)
+                    // Reorder Handle
                     const dragHandleX = logicalRightEdge - 30 / state.zoom;
                     if (
                         Math.abs(coords.paperX - dragHandleX) < 20 &&
-                        Math.abs(coords.logicalY - (rowTop + row.height / 2)) <
-                            20
+                        Math.abs(coords.logicalY - (top + row.height / 2)) < 20
                     ) {
                         dragInfo.current = {
                             active: true,
@@ -2002,18 +2345,14 @@ const App = () => {
                             initialY: 0,
                             initialH: 0,
                             initialW: 0,
-                            draggedRowIndex: i,
+                            draggedRowIndex: index,
                         };
                         dispatch({ type: 'SELECT_ROW', id: row.id });
                         foundHit = true;
                         break;
                     }
-
                     // Col Resize
-                    if (
-                        coords.logicalY >= rowTop &&
-                        coords.logicalY <= rowBottom
-                    ) {
+                    if (coords.logicalY >= top && coords.logicalY <= bottom) {
                         let colAccumX = 0;
                         for (let d = 0; d < row.layout.length - 1; d++) {
                             const colW = (CANVAS_WIDTH * row.layout[d]) / 100;
@@ -2040,98 +2379,43 @@ const App = () => {
                         if (foundHit) break;
                     }
                 }
+            }
+        }
 
-                if (coords.logicalY >= rowTop && coords.logicalY <= rowBottom) {
-                    const rowLocalY = coords.logicalY - rowTop;
-                    if (
-                        coords.paperX >= 0 &&
-                        coords.paperX <= CANVAS_WIDTH &&
-                        !foundHit
-                    ) {
-                        for (let j = row.elements.length - 1; j >= 0; j--) {
-                            const el = row.elements[j];
-                            const isSelected =
-                                state.selectedElementId === el.id;
-                            if (isSelected) {
-                                const limit = 10 / state.zoom;
-                                const handles = [
-                                    { name: 'tl', x: el.x, y: el.y },
-                                    { name: 'tr', x: el.x + el.width, y: el.y },
-                                    {
-                                        name: 'bl',
-                                        x: el.x,
-                                        y: el.y + el.height,
-                                    },
-                                    {
-                                        name: 'br',
-                                        x: el.x + el.width,
-                                        y: el.y + el.height,
-                                    },
-                                ];
-                                for (let h of handles) {
-                                    if (
-                                        Math.abs(coords.paperX - h.x) <=
-                                            limit &&
-                                        Math.abs(rowLocalY - h.y) <= limit
-                                    ) {
-                                        dragInfo.current = {
-                                            active: true,
-                                            type: 'elementResize',
-                                            rowId: row.id,
-                                            elId: el.id,
-                                            handle: h.name,
-                                            startX: e.clientX,
-                                            startY: e.clientY,
-                                            initialX: el.x,
-                                            initialY: el.y,
-                                            initialW: el.width,
-                                            initialH: el.height,
-                                        };
-                                        foundHit = true;
-                                        break;
-                                    }
-                                }
-                                if (foundHit) break;
-                            }
-                            if (
-                                coords.paperX >= el.x &&
-                                coords.paperX <= el.x + el.width &&
-                                rowLocalY >= el.y &&
-                                rowLocalY <= el.y + el.height
-                            ) {
-                                dispatch({
-                                    type: 'SELECT_ELEMENT',
-                                    rowId: row.id,
-                                    elId: el.id,
-                                });
-                                dragInfo.current = {
-                                    active: true,
-                                    type: 'element',
-                                    rowId: row.id,
-                                    elId: el.id,
-                                    startX: e.clientX,
-                                    startY: e.clientY,
-                                    initialX: el.x,
-                                    initialY: el.y,
-                                    initialH: 0,
-                                    initialW: 0,
-                                };
-                                foundHit = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!foundHit) {
-                        dispatch({ type: 'SELECT_ROW', id: row.id });
-                        foundHit = true;
-                        break;
-                    }
+        if (!foundHit) {
+            // 3. Row Selection (Background)
+            for (let i = 0; i < yMap.length; i++) {
+                const { row, top, bottom } = yMap[i];
+                if (coords.logicalY >= top && coords.logicalY <= bottom) {
+                    dispatch({ type: 'SELECT_ROW', id: row.id });
+                    foundHit = true;
+                    break;
                 }
             }
-            currentY += row.height;
         }
+
         if (!foundHit) dispatch({ type: 'SELECT_ROW', id: null });
     };
+
+    // Global Listeners
+    useEffect(() => {
+        const handleWindowMouseMove = (e: MouseEvent) => {
+            if (dragInfo.current.active) {
+                handleMouseMove(e as unknown as React.MouseEvent);
+            }
+        };
+        const handleWindowMouseUp = () => {
+            if (dragInfo.current.active) {
+                handleMouseUp();
+            }
+        };
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', handleWindowMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMouseMove);
+            window.removeEventListener('mouseup', handleWindowMouseUp);
+        };
+    }, [state.zoom]);
 
     const handleMouseMove = (e: React.MouseEvent) => {
         const coords = getCanvasCoords(e);
@@ -2139,19 +2423,19 @@ const App = () => {
         if (!dragInfo.current.active) {
             let currentY = 0;
             let foundHover = false;
+
+            // Priority: Elements -> Controls -> Rows
+            // 1. Elements Hover
             for (const row of state.rows) {
                 const rowTop = currentY;
                 const rowBottom = currentY + row.height;
-                // Row Hover
-                if (coords.logicalY >= rowTop && coords.logicalY <= rowBottom) {
-                    if (state.hoveredRowId !== row.id)
-                        dispatch({ type: 'SET_HOVERED_ROW', id: row.id });
-                    foundHover = true;
-                }
-                // Element Hover
                 const rowLocalY = coords.logicalY - rowTop;
                 for (let j = row.elements.length - 1; j >= 0; j--) {
                     const el = row.elements[j];
+                    // Global hit check (ignoring row bounds for elements)
+                    // Actually rowLocalY is relative to row top.
+                    // Element Y is relative to row top.
+                    // Hit test:
                     if (
                         coords.paperX >= el.x &&
                         coords.paperX <= el.x + el.width &&
@@ -2168,27 +2452,50 @@ const App = () => {
                         break;
                     }
                 }
-                // Cursor Logic for Controls (Priority Update)
-                if (state.selectedRowId === row.id) {
-                    const centerX = CANVAS_WIDTH / 2;
-                    // Resize
-                    if (
-                        Math.abs(coords.paperX - centerX) < 30 &&
-                        Math.abs(coords.logicalY - rowBottom) < 10
-                    )
-                        cursor = 'ns-resize';
-                    // Add Buttons
-                    else if (
-                        Math.abs(coords.paperX - centerX) < 20 &&
-                        (Math.abs(coords.logicalY - (rowTop - 20)) < 15 ||
-                            Math.abs(coords.logicalY - (rowBottom + 20)) < 15)
-                    )
-                        cursor = 'pointer';
-                }
-
                 currentY += row.height;
-                if (cursor !== 'default') break;
+                if (foundHover) break;
             }
+
+            if (!foundHover) {
+                // 2. Controls Hover (Resize/Add/Reorder)
+                currentY = 0;
+                for (const row of state.rows) {
+                    const rowBottom = currentY + row.height;
+                    if (state.selectedRowId === row.id) {
+                        const centerX = CANVAS_WIDTH / 2;
+                        if (
+                            Math.abs(coords.paperX - centerX) < 30 &&
+                            Math.abs(coords.logicalY - rowBottom) < 10
+                        ) {
+                            cursor = 'ns-resize';
+                            foundHover = true;
+                        }
+                        // ... other controls ...
+                    }
+                    currentY += row.height;
+                    if (foundHover) break;
+                }
+            }
+
+            if (!foundHover) {
+                // 3. Row Hover
+                currentY = 0;
+                for (const row of state.rows) {
+                    const rowTop = currentY;
+                    const rowBottom = currentY + row.height;
+                    if (
+                        coords.logicalY >= rowTop &&
+                        coords.logicalY <= rowBottom
+                    ) {
+                        if (state.hoveredRowId !== row.id)
+                            dispatch({ type: 'SET_HOVERED_ROW', id: row.id });
+                        foundHover = true;
+                        break;
+                    }
+                    currentY += row.height;
+                }
+            }
+
             if (!foundHover) {
                 if (state.hoveredElementId || state.hoveredRowId) {
                     dispatch({ type: 'SET_HOVERED_ELEMENT', id: null });
@@ -2433,6 +2740,9 @@ const App = () => {
                             src,
                         })
                     }
+                    onAddSpecialBlock={(type) =>
+                        dispatch({ type: 'ADD_SPECIAL_BLOCK', blockType: type })
+                    }
                 />
 
                 <div
@@ -2460,9 +2770,9 @@ const App = () => {
                             left: 0,
                         }}
                         onMouseDown={handleMouseDown}
-                        onMouseMove={() => {}} // Handled by window listener
-                        onMouseUp={() => {}} // Handled by window listener
-                        onMouseLeave={() => {}}
+                        // Mouse move/up are handled globally via window listener effect,
+                        // but we keep onMouseLeave for edge cases if needed (though global covers it)
+                        // We remove inline onMouseMove/Up to avoid conflict/double handling
                         onClick={(e) => e.stopPropagation()}
                         className="cursor-pointer shadow-sm"
                     />
