@@ -17,9 +17,8 @@ import { Sidebar } from './shared/Sidebar';
 import { TopBar } from './shared/TopBar';
 import { ZoomControls } from './shared/ZoomControls';
 import { ColorPicker } from './shared/ColorPicker';
-import { Copy, Trash2, Palette, History } from 'lucide-react';
+import { Copy, Trash2, Palette } from 'lucide-react';
 import { EditorElement } from '../stores/types';
-import OBLOldEditor from './OBLOldEditor';
 
 const store = new EditorStore();
 
@@ -450,7 +449,7 @@ const ImageElement = observer(({
     );
 });
 
-const KonvaEditor = observer(() => {
+const OBLImprovedEditor = observer(() => {
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<any>(null);
     const [viewportW, setViewportW] = useState(0);
@@ -624,7 +623,7 @@ const KonvaEditor = observer(() => {
 
     return (
         <div className="flex h-full flex-col bg-gray-100">
-            <TopBar width={CANVAS_WIDTH} height={totalHeight} />
+            <TopBar width={CANVAS_WIDTH} height={totalHeight} title="Optimized Editor (Fast)" />
             <div className="flex flex-1 overflow-hidden">
                 <Sidebar
                     onAddRow={(layout) => store.addOrUpdateRowLayout(layout)}
@@ -1026,4 +1025,5 @@ const KonvaEditor = observer(() => {
     );
 });
 
-export default KonvaEditor;
+export default OBLImprovedEditor;
+

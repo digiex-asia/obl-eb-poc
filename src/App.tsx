@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import CanvasEditor from './components/CanvasEditor';
 import KonvaEditor from './components/KonvaEditor';
 import SkiaEditor from './components/SkiaEditor';
+import EditorComparison from './components/EditorComparison';
 
 const Navigation = () => {
     return (
@@ -17,6 +18,12 @@ const Navigation = () => {
                 className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors"
             >
                 Konva
+            </Link>
+            <Link
+                to="/comparison"
+                className="px-4 py-2 rounded-md text-sm hover:bg-gray-100 transition-colors text-blue-600 font-bold"
+            >
+                Comparison
             </Link>
             <Link
                 to="/skia"
@@ -37,6 +44,7 @@ const App = () => {
                     <Routes>
                         <Route path="/" element={<CanvasEditor />} />
                         <Route path="/konva" element={<KonvaEditor />} />
+                        <Route path="/comparison" element={<EditorComparison />} />
                         <Route path="/skia" element={<SkiaEditor />} />
                     </Routes>
                 </div>
