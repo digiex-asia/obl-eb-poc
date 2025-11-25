@@ -43,22 +43,23 @@ class OldLaggyStore {
     // We simulate this by deep cloning the ENTIRE state on every single modification.
     private commitState(newState: LaggyState) {
         // 1. Serialize/Deserialize (The O(N) cost of the legacy system)
+
         const serialized = JSON.stringify(newState);
         const deserialized = JSON.parse(serialized);
-
+        this.state = deserialized;
         // 2. Artificial CPU burn to simulate 10k lines of logic running
         // We want this to block the main thread (synchronously) so the UI feels "heavy"
         // but we MUST ensure the update happens immediately after the block.
-        const start = performance.now();
-        while (performance.now() - start < 15) {
-            // Busy wait 15ms per update
-        }
+        // const start = performance.now();
+        // while (performance.now() - start < 50) {
+        //     // Busy wait 15ms per update
+        //     console.log('busy waiting');
+        // }
 
         // 3. Commit the new state. Since this is in an action (mobx),
         // it triggers the reaction *after* the heavy computation.
         // Because we replaced the entire 'state' object, all observers of 'state'
         // (the whole app) will re-render.
-        this.state = deserialized;
     }
 
     setZoom(zoom: number) {

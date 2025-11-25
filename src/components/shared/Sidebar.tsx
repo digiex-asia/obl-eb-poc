@@ -19,7 +19,7 @@ import {
     Heading,
     AlignLeft,
 } from 'lucide-react';
-import { ElementType } from '../../stores/types';
+import { ElementType } from '../../common/stores/types';
 import { SAMPLE_IMAGES } from '../../utils/constants';
 
 interface SidebarProps {

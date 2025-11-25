@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Stage, Layer, Rect, Circle, Text, Image as KonvaImage, Group } from 'react-konva';
-import OldLaggyStore, { LaggyState } from '../stores/OldLaggyStore';
+import OldLaggyStore, { LaggyState } from '../common/stores/OldLaggyStore';
 import {
     CANVAS_WIDTH,
     SELECTION_COLOR,
     HANDLE_SIZE,
     EditorRow,
     EditorElement,
-} from '../stores/types';
+} from '../common/stores/types';
 import { Sidebar } from './shared/Sidebar';
 import { TopBar } from './shared/TopBar';
 import { ZoomControls } from './shared/ZoomControls';
@@ -32,10 +32,10 @@ const LaggyRow = ({
     onChangeHeight: (id: string, h: number) => void;
 }) => {
     // Simulate expensive render logic
-    const start = performance.now();
-    while (performance.now() - start < 2) {
-        // Busy wait 2ms per row render
-    }
+    // const start = performance.now();
+    // while (performance.now() - start < 2) {
+    //     // Busy wait 2ms per row render
+    // }
 
     const isSelected = fullState.selectedRowId === row.id;
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import EditorStore from '../stores/EditorStore';
-import { CANVAS_WIDTH } from '../stores/types';
+import EditorStore from '../common/stores/EditorStore';
+import { CANVAS_WIDTH } from '../common/stores/types';
 import { Sidebar } from './shared/Sidebar';
 import { TopBar } from './shared/TopBar';
 import { ZoomControls } from './shared/ZoomControls';

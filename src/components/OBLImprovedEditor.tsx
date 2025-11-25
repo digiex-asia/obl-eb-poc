@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Stage, Layer, Rect, Circle, Text, Image as KonvaImage, Line, Group } from 'react-konva';
-import EditorStore from '../stores/EditorStore';
+import EditorStore from '../common/stores/EditorStore';
 import {
     CANVAS_WIDTH,
     PAGE_BG_COLOR,
@@ -12,13 +12,13 @@ import {
     COLUMN_GUIDE_COLOR,
     HANDLE_SIZE,
     ADD_BUTTON_OFFSET,
-} from '../stores/types';
+} from '../common/stores/types';
 import { Sidebar } from './shared/Sidebar';
 import { TopBar } from './shared/TopBar';
 import { ZoomControls } from './shared/ZoomControls';
 import { ColorPicker } from './shared/ColorPicker';
 import { Copy, Trash2, Palette } from 'lucide-react';
-import { EditorElement } from '../stores/types';
+import { EditorElement } from '../common/stores/types';
 
 const store = new EditorStore();
 

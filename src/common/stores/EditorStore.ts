@@ -1,6 +1,5 @@
 import { makeAutoObservable } from 'mobx';
 import {
-    EditorState,
     EditorRow,
     EditorElement,
     ElementType,
@@ -26,8 +25,206 @@ class EditorStore {
     reorderTargetIndex: number | null = null;
     zoom: number = 1;
 
+    // Element mapping caches for O(1) lookups instead of O(n) filters
+    _elementsByRowId = new Map<string, EditorElement[]>();
+    _elementsByColumnIndex = new Map<string, EditorElement[]>();
+    _elementsByRowAndColumn = new Map<string, EditorElement[]>();
+    _elementsVersion = 0;
+
     constructor() {
         makeAutoObservable(this);
+        this._rebuildElementMappings();
+    }
+
+    // Helper to determine which column an element belongs to based on its x position
+    private _getColumnIndexForElement(
+        element: EditorElement,
+        row: EditorRow
+    ): number {
+        const elementCenterX = element.x + element.width / 2;
+        let colX = 0;
+        for (let i = 0; i < row.layout.length; i++) {
+            const colWidth = (CANVAS_WIDTH * row.layout[i]) / 100;
+            if (elementCenterX >= colX && elementCenterX < colX + colWidth) {
+                return i;
+            }
+            colX += colWidth;
+        }
+        // Default to first column if not found
+        return 0;
+    }
+
+    // Rebuild element mappings for O(1) lookups
+    private _rebuildElementMappings() {
+        this._elementsByRowId.clear();
+        this._elementsByColumnIndex.clear();
+        this._elementsByRowAndColumn.clear();
+        this._elementsVersion++;
+
+        // Build maps for O(1) lookups
+        this.rows.forEach((row) => {
+            row.elements.forEach((element) => {
+                // Map by row ID
+                if (!this._elementsByRowId.has(row.id)) {
+                    this._elementsByRowId.set(row.id, []);
+                }
+                this._elementsByRowId.get(row.id)!.push(element);
+
+                // Map by column index
+                const colIndex = this._getColumnIndexForElement(element, row);
+                const colKey = `${row.id}-${colIndex}`;
+                if (!this._elementsByColumnIndex.has(colKey)) {
+                    this._elementsByColumnIndex.set(colKey, []);
+                }
+                this._elementsByColumnIndex.get(colKey)!.push(element);
+
+                // Map by row and column combination
+                const rowColKey = `${row.id}-${colIndex}`;
+                if (!this._elementsByRowAndColumn.has(rowColKey)) {
+                    this._elementsByRowAndColumn.set(rowColKey, []);
+                }
+                this._elementsByRowAndColumn.get(rowColKey)!.push(element);
+            });
+        });
+    }
+
+    // Get elements for a specific row and column (most common use case)
+    getElementsByRowAndColumn(rowId: string, colIndex: number): EditorElement[] {
+        if (!rowId || colIndex < 0) return [];
+        const key = `${rowId}-${colIndex}`;
+        return this._elementsByRowAndColumn.get(key) || [];
+    }
+
+    // Get elements for a specific row
+    getElementsByRowId(rowId: string): EditorElement[] {
+        if (!rowId) return [];
+        return this._elementsByRowId.get(rowId) || [];
+    }
+
+    // Get elements for a specific column in a row
+    getElementsByColumnIndex(rowId: string, colIndex: number): EditorElement[] {
+        if (!rowId || colIndex < 0) return [];
+        const key = `${rowId}-${colIndex}`;
+        return this._elementsByColumnIndex.get(key) || [];
+    }
+
+    // Calculate column bounding box for a specific column in a row
+    getColumnBounds(
+        rowId: string,
+        colIndex: number,
+        rowY: number = 0
+    ): { x: number; y: number; width: number; height: number } | null {
+        const row = this.rows.find((r) => r.id === rowId);
+        if (!row || colIndex < 0 || colIndex >= row.layout.length) {
+            return null;
+        }
+
+        let colX = 0;
+        for (let i = 0; i < colIndex; i++) {
+            colX += (CANVAS_WIDTH * row.layout[i]) / 100;
+        }
+        const colWidth = (CANVAS_WIDTH * row.layout[colIndex]) / 100;
+
+        return {
+            x: colX,
+            y: rowY,
+            width: colWidth,
+            height: row.height,
+        };
+    }
+
+    // Get all column bounds for a row
+    getColumnBoundsForRow(
+        rowId: string,
+        rowY: number = 0
+    ): Array<{ x: number; y: number; width: number; height: number }> {
+        const row = this.rows.find((r) => r.id === rowId);
+        if (!row) return [];
+
+        const bounds: Array<{
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        }> = [];
+        let colX = 0;
+
+        row.layout.forEach((pct) => {
+            const colWidth = (CANVAS_WIDTH * pct) / 100;
+            bounds.push({
+                x: colX,
+                y: rowY,
+                width: colWidth,
+                height: row.height,
+            });
+            colX += colWidth;
+        });
+
+        return bounds;
+    }
+
+    // Constrain element to column boundaries (similar to inBoundedEl from emailPage.js)
+    constrainElementToColumn(
+        element: EditorElement,
+        rowId: string,
+        colIndex: number,
+        rowY: number = 0
+    ): Partial<EditorElement> {
+        const bounds = this.getColumnBounds(rowId, colIndex, rowY);
+        if (!bounds) return {};
+
+        const baseX = bounds.x;
+        const baseY = bounds.y;
+        let newX = element.x;
+        let newY = element.y;
+        let newWidth = element.width;
+        let newHeight = element.height;
+
+        // Resize element if it's too large for the column (maintaining aspect ratio)
+        if (element.width > bounds.width) {
+            const ratio = bounds.width / element.width;
+            newWidth = bounds.width;
+            newHeight = element.height * ratio;
+        } else if (element.height > bounds.height) {
+            const ratio = bounds.height / element.height;
+            newHeight = bounds.height;
+            newWidth = element.width * ratio;
+        }
+
+        // Center the element horizontally within the column if it fits
+        if (newWidth <= bounds.width) {
+            newX = baseX + (bounds.width - newWidth) / 2;
+        } else {
+            newX = baseX;
+        }
+
+        // Center the element vertically within the column if it fits
+        if (newHeight <= bounds.height) {
+            newY = baseY + (bounds.height - newHeight) / 2;
+        } else {
+            newY = baseY;
+        }
+
+        // Clamp element position to stay within column boundaries
+        if (newX < baseX) {
+            newX = baseX;
+        }
+        if (newX + newWidth > baseX + bounds.width) {
+            newX = baseX + bounds.width - newWidth;
+        }
+        if (newY < baseY) {
+            newY = baseY;
+        }
+        if (newY + newHeight > baseY + bounds.height) {
+            newY = baseY + bounds.height - newHeight;
+        }
+
+        return {
+            x: newX,
+            y: newY,
+            width: newWidth,
+            height: newHeight,
+        };
     }
 
     setZoom(zoom: number) {
@@ -143,6 +340,7 @@ class EditorStore {
         this.selectedRowId = newRowId;
         this.selectedElementId =
             newRow.elements.length > 0 ? newRow.elements[0].id : null;
+        this._rebuildElementMappings();
     }
 
     addOrUpdateRowLayout(
@@ -183,6 +381,7 @@ class EditorStore {
         this.rows = newRows;
         this.selectedRowId = newRow.id;
         this.selectedElementId = null;
+        this._rebuildElementMappings();
     }
 
     duplicateSelection() {
@@ -204,6 +403,7 @@ class EditorStore {
             };
             row.elements = [...row.elements, newElement];
             this.selectedElementId = newElement.id;
+            this._rebuildElementMappings();
         } else if (this.selectedRowId) {
             const index = this.rows.findIndex(
                 (r) => r.id === this.selectedRowId
@@ -223,6 +423,7 @@ class EditorStore {
             this.rows = newRows;
             this.selectedRowId = newRow.id;
             this.selectedElementId = null;
+            this._rebuildElementMappings();
         }
     }
 
@@ -243,6 +444,7 @@ class EditorStore {
         this.rows = newRows;
         this.selectedRowId = newRow.id;
         this.selectedElementId = null;
+        this._rebuildElementMappings();
     }
 
     resizeColumn(rowId: string, dividerIndex: number, deltaPct: number) {
@@ -265,6 +467,7 @@ class EditorStore {
         newLayout[dividerIndex] = newLeft;
         newLayout[dividerIndex + 1] = newRight;
         row.layout = newLayout;
+        this._rebuildElementMappings();
     }
 
     selectRow(id: string | null) {
@@ -390,6 +593,18 @@ class EditorStore {
         if (elementType === 'spacer') newEl.fill = 'transparent';
 
         row.elements = [...row.elements, newEl];
+
+        // Apply constraints to ensure element fits within its column
+        const colIndex = this._getColumnIndexForElement(newEl, row);
+        const constrained = this.constrainElementToColumn(
+            newEl,
+            rowId,
+            colIndex,
+            0
+        );
+        Object.assign(newEl, constrained);
+
+        this._rebuildElementMappings();
     }
 
     updateElement(
@@ -401,12 +616,26 @@ class EditorStore {
         if (!row) return;
         const element = row.elements.find((e) => e.id === elId);
         if (!element) return;
+
+        // Apply updates
         Object.assign(element, attrs);
+
+        // Determine which column this element belongs to and apply constraints
+        const colIndex = this._getColumnIndexForElement(element, row);
+        const constrained = this.constrainElementToColumn(
+            element,
+            rowId,
+            colIndex,
+            0
+        );
+        Object.assign(element, constrained);
+
         const maxBottom = row.elements.reduce(
             (max, el) => Math.max(max, el.y + el.height),
             0
         );
         row.height = Math.max(150, maxBottom + 40);
+        this._rebuildElementMappings();
     }
 
     moveElement(
@@ -440,6 +669,7 @@ class EditorStore {
 
         this.selectedRowId = targetRowId;
         this.selectedElementId = elementId;
+        this._rebuildElementMappings();
     }
 
     updateRowHeight(rowId: string, height: number) {
@@ -453,9 +683,10 @@ class EditorStore {
         if (this.selectedElementId && this.selectedRowId) {
             const row = this.rows.find((r) => r.id === this.selectedRowId);
             if (row) {
-                row.elements = row.elements.filter(
-                    (e) => e.id !== this.selectedElementId
-                );
+            row.elements = row.elements.filter(
+                (e) => e.id !== this.selectedElementId
+            );
+            this._rebuildElementMappings();
             }
             this.selectedElementId = null;
         } else if (this.selectedRowId) {
@@ -475,6 +706,7 @@ class EditorStore {
             this.rows = newRows;
             this.selectedRowId = newSelectedId;
             this.selectedElementId = null;
+            this._rebuildElementMappings();
         }
     }
 }

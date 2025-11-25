@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import CanvasEditor from './components/CanvasEditor';
 import KonvaEditor from './components/KonvaEditor';
+import GeminiEditor from './components/GeminiEditor';
 import SkiaEditor from './components/SkiaEditor';
 import EditorComparison from './components/EditorComparison';
 
@@ -18,6 +19,12 @@ const Navigation = () => {
                 className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors"
             >
                 Konva
+            </Link>
+            <Link
+                to="/gemini"
+                className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors text-purple-600"
+            >
+                Gemini
             </Link>
             <Link
                 to="/comparison"
@@ -44,6 +51,7 @@ const App = () => {
                     <Routes>
                         <Route path="/" element={<CanvasEditor />} />
                         <Route path="/konva" element={<KonvaEditor />} />
+                        <Route path="/gemini" element={<GeminiEditor />} />
                         <Route path="/comparison" element={<EditorComparison />} />
                         <Route path="/skia" element={<SkiaEditor />} />
                     </Routes>
