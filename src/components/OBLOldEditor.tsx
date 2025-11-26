@@ -24,7 +24,7 @@ const LaggyRow = ({
     row,
     fullState, // PASSING THE FULL STATE DOWN!
     onSelect,
-    onChangeHeight
+    onChangeHeight,
 }: {
     row: EditorRow;
     fullState: LaggyState;
@@ -81,7 +81,7 @@ const LaggyRow = ({
 const LaggyElement = ({
     element,
     rowId,
-    fullState
+    fullState,
 }: {
     element: EditorElement;
     rowId: string;
@@ -123,9 +123,7 @@ const LaggyElement = ({
                 strokeWidth={isSelected ? 2 : 0}
             />
             {/* Text simulation */}
-            {element.type === 'text' && (
-                <Text text={element.text || 'Text'} padding={5} />
-            )}
+            {element.type === 'text' && <Text text={element.text || 'Text'} padding={5} />}
             {/* Handles - rendering them unconditionally but hidden creates more nodes */}
             {isSelected && (
                 <Circle
@@ -140,7 +138,7 @@ const LaggyElement = ({
                         // Trigger heavy update loop
                         store.updateElement(rowId, element.id, {
                             width: Math.max(10, newW),
-                            height: Math.max(10, newH)
+                            height: Math.max(10, newH),
                         });
                     }}
                 />
@@ -156,7 +154,7 @@ const OBLOldEditor = observer(({ onSwitchBack }: { onSwitchBack: () => void }) =
 
     // Calculate layout positions manually in render (expensive)
     let currentY = 50;
-    const rowsWithY = store.state.rows.map(row => {
+    const rowsWithY = store.state.rows.map((row) => {
         const r = { ...row, y: currentY };
         currentY += row.height;
         return r;
@@ -189,7 +187,8 @@ const OBLOldEditor = observer(({ onSwitchBack }: { onSwitchBack: () => void }) =
     return (
         <div className="flex h-full flex-col bg-gray-100">
             <div className="bg-red-100 p-2 text-center text-red-800 text-sm font-bold border-b border-red-200">
-                ⚠️ LEGACY SIMULATION MODE: Simulating OBL Old Editor Lag (Deep Clones + Monolithic State)
+                ⚠️ LEGACY SIMULATION MODE: Simulating OBL Old Editor Lag (Deep Clones + Monolithic
+                State)
             </div>
 
             <TopBar title="Legacy Editor (Slow)">
@@ -234,11 +233,21 @@ const OBLOldEditor = observer(({ onSwitchBack }: { onSwitchBack: () => void }) =
                                 shadowColor="black"
                                 shadowBlur={20}
                                 shadowOpacity={0.1}
-                                x={(viewportW - CANVAS_WIDTH * store.state.zoom) / 2 / store.state.zoom}
+                                x={
+                                    (viewportW - CANVAS_WIDTH * store.state.zoom) /
+                                    2 /
+                                    store.state.zoom
+                                }
                             />
 
-                            <Group x={(viewportW - CANVAS_WIDTH * store.state.zoom) / 2 / store.state.zoom}>
-                                {rowsWithY.map(row => (
+                            <Group
+                                x={
+                                    (viewportW - CANVAS_WIDTH * store.state.zoom) /
+                                    2 /
+                                    store.state.zoom
+                                }
+                            >
+                                {rowsWithY.map((row) => (
                                     <LaggyRow
                                         key={row.id}
                                         row={row}
@@ -254,8 +263,8 @@ const OBLOldEditor = observer(({ onSwitchBack }: { onSwitchBack: () => void }) =
                     {/* Duplicate Row Action (Floating) */}
                     {store.state.selectedRowId && !store.state.selectedElementId && (
                         <div className="absolute top-20 right-8 flex flex-col gap-2 bg-white p-2 rounded shadow-lg border border-gray-200">
-                             <div className="text-xs font-bold text-gray-500 mb-1">Row Actions</div>
-                             <button
+                            <div className="text-xs font-bold text-gray-500 mb-1">Row Actions</div>
+                            <button
                                 onClick={() => store.duplicateSelection()}
                                 className="p-2 hover:bg-blue-50 rounded text-gray-600 hover:text-blue-600 transition-colors group relative"
                                 title="Duplicate Row"
@@ -266,10 +275,7 @@ const OBLOldEditor = observer(({ onSwitchBack }: { onSwitchBack: () => void }) =
                     )}
                 </div>
 
-                <ZoomControls
-                    zoom={store.state.zoom}
-                    setZoom={(z) => store.setZoom(z)}
-                />
+                <ZoomControls zoom={store.state.zoom} setZoom={(z) => store.setZoom(z)} />
             </div>
         </div>
     );

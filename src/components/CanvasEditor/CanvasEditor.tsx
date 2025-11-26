@@ -6,8 +6,6 @@ import {
     Layout,
     Type,
     Palette,
-    Play,
-    Settings,
     Shapes,
     MousePointer2,
     LayoutGrid,
@@ -18,692 +16,38 @@ import {
     Copy,
     Trash2,
     Plus,
-    GripHorizontal,
     Minus,
-    ZoomIn,
-    Check,
     X,
-    Columns as ColumnsIcon,
     Grid3x3,
-    PanelLeft,
     Heading,
     AlignLeft,
 } from 'lucide-react';
 
-// --- 1. TYPES & CONSTANTS ---
-const CANVAS_WIDTH = 600;
-const PAGE_BG_COLOR = '#f3f4f6';
-const PRIMARY_COLOR = '#3b82f6';
-const SELECTION_COLOR = '#d946ef'; // Pink for Element Select/Hover
-const ROW_HOVER_COLOR = '#60a5fa'; // Light Blue for Row Hover
-const DROP_TARGET_COLOR = '#10b981';
-const COLUMN_GUIDE_COLOR = '#d946ef'; // Purple for Column Resize
-const REORDER_LINE_COLOR = '#3b82f6';
-const HANDLE_SIZE = 10;
+// Import types and reducer from modular files
+import {
+    CANVAS_WIDTH,
+    PAGE_BG_COLOR,
+    PRIMARY_COLOR,
+    SELECTION_COLOR,
+    ROW_HOVER_COLOR,
+    DROP_TARGET_COLOR,
+    COLUMN_GUIDE_COLOR,
+    REORDER_LINE_COLOR,
+    HANDLE_SIZE,
+    ADD_BUTTON_OFFSET,
+    ADD_BUTTON_HIT_TOLERANCE,
+    EditorState,
+    EditorRow,
+    EditorElement,
+    ElementType,
+    CanvasEditorProps,
+} from './types';
+import { editorReducer, createInitialState } from './reducer';
 
-// Control Positioning
-const RESIZE_HANDLE_HIT_TOLERANCE = 10;
-const ADD_BUTTON_OFFSET = 25;
-const ADD_BUTTON_HIT_TOLERANCE = 15;
+// State management (Action, editorReducer, createInitialState) imported from ./reducer.ts
+// Types (EditorState, EditorRow, EditorElement, etc.) imported from ./types.ts
 
-type ElementType =
-    | 'rect'
-    | 'circle'
-    | 'triangle'
-    | 'star'
-    | 'polygon'
-    | 'image'
-    | 'text'
-    | 'button'
-    | 'divider'
-    | 'spacer';
-
-interface EditorElement {
-    id: string;
-    type: ElementType;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    fill?: string;
-    src?: string;
-    text?: string;
-}
-
-interface EditorRow {
-    id: string;
-    height: number;
-    layout: number[];
-    elements: EditorElement[];
-    backgroundColor?: string;
-}
-
-interface EditorState {
-    rows: EditorRow[];
-    selectedRowId: string | null;
-    selectedElementId: string | null;
-    hoveredElementId: string | null;
-    hoveredRowId: string | null;
-    dragTarget: { rowId: string; colIndex: number } | null;
-    reorderTargetIndex: number | null;
-    zoom: number;
-}
-
-// --- 2. STATE MANAGEMENT ---
-
-type Action =
-    | {
-          type: 'ADD_OR_UPDATE_ROW_LAYOUT';
-          layout: number[];
-          index?: number;
-          forceAdd?: boolean;
-          minHeight?: number;
-      }
-    | {
-          type: 'ADD_SPECIAL_BLOCK';
-          blockType: 'freeform' | 'divider' | 'spacer';
-      }
-    | { type: 'DUPLICATE_ROW'; rowId: string }
-    | { type: 'DUPLICATE_SELECTION' }
-    | { type: 'SELECT_ROW'; id: string | null }
-    | { type: 'SELECT_ELEMENT'; rowId: string; elId: string }
-    | { type: 'SET_HOVERED_ELEMENT'; id: string | null }
-    | { type: 'SET_HOVERED_ROW'; id: string | null }
-    | {
-          type: 'SET_DRAG_TARGET';
-          target: { rowId: string; colIndex: number } | null;
-      }
-    | { type: 'SET_REORDER_TARGET'; index: number | null }
-    | { type: 'REORDER_ROW'; fromIndex: number; toIndex: number }
-    | {
-          type: 'ADD_ELEMENT';
-          rowId: string;
-          elementType: ElementType;
-          src?: string;
-          x?: number;
-          y?: number;
-          text?: string;
-      }
-    | {
-          type: 'UPDATE_ELEMENT';
-          rowId: string;
-          elId: string;
-          attrs: Partial<EditorElement>;
-      }
-    | {
-          type: 'MOVE_ELEMENT';
-          sourceRowId: string;
-          targetRowId: string;
-          elementId: string;
-          newX: number;
-          newY: number;
-      }
-    | { type: 'UPDATE_ROW_HEIGHT'; rowId: string; height: number }
-    | {
-          type: 'RESIZE_COLUMN';
-          rowId: string;
-          dividerIndex: number;
-          deltaPct: number;
-      }
-    | { type: 'DELETE_SELECTION' }
-    | { type: 'SET_ZOOM'; zoom: number }
-    | { type: 'SET_SELECTION_COLOR'; color: string };
-
-const generateId = () =>
-    crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2, 9);
-
-const initialState: EditorState = {
-    rows: [
-        {
-            id: 'row-1',
-            height: 200,
-            layout: [100],
-            elements: [],
-            backgroundColor: '#ffffff',
-        },
-    ],
-    selectedRowId: 'row-1',
-    selectedElementId: null,
-    hoveredElementId: null,
-    hoveredRowId: null,
-    dragTarget: null,
-    reorderTargetIndex: null,
-    zoom: 1,
-};
-
-const editorReducer = (state: EditorState, action: Action): EditorState => {
-    switch (action.type) {
-        case 'SET_ZOOM':
-            const newZoom = Math.max(0.1, Math.min(5, action.zoom));
-            return { ...state, zoom: newZoom };
-
-        case 'SET_HOVERED_ELEMENT':
-            if (state.hoveredElementId === action.id) return state;
-            return { ...state, hoveredElementId: action.id };
-
-        case 'SET_HOVERED_ROW':
-            if (state.hoveredRowId === action.id) return state;
-            return { ...state, hoveredRowId: action.id };
-
-        case 'SET_DRAG_TARGET':
-            if (
-                state.dragTarget?.rowId === action.target?.rowId &&
-                state.dragTarget?.colIndex === action.target?.colIndex
-            )
-                return state;
-            return { ...state, dragTarget: action.target };
-
-        case 'SET_REORDER_TARGET':
-            return { ...state, reorderTargetIndex: action.index };
-
-        case 'REORDER_ROW': {
-            const { fromIndex, toIndex } = action;
-            if (
-                fromIndex === toIndex ||
-                fromIndex < 0 ||
-                fromIndex >= state.rows.length
-            )
-                return state;
-            const newRows = [...state.rows];
-            const [movedRow] = newRows.splice(fromIndex, 1);
-            const insertIndex = toIndex > fromIndex ? toIndex - 1 : toIndex;
-            newRows.splice(insertIndex, 0, movedRow);
-            return { ...state, rows: newRows, reorderTargetIndex: null };
-        }
-
-        case 'SET_SELECTION_COLOR': {
-            const { color } = action;
-            if (state.selectedElementId && state.selectedRowId) {
-                return {
-                    ...state,
-                    rows: state.rows.map((row) => {
-                        if (row.id !== state.selectedRowId) return row;
-                        return {
-                            ...row,
-                            elements: row.elements.map((el) =>
-                                el.id === state.selectedElementId
-                                    ? { ...el, fill: color }
-                                    : el
-                            ),
-                        };
-                    }),
-                };
-            }
-            if (state.selectedRowId) {
-                return {
-                    ...state,
-                    rows: state.rows.map((row) =>
-                        row.id === state.selectedRowId
-                            ? { ...row, backgroundColor: color }
-                            : row
-                    ),
-                };
-            }
-            return state;
-        }
-
-        case 'ADD_SPECIAL_BLOCK': {
-            const { blockType } = action;
-            const newRowId = generateId();
-            const newRow: EditorRow = {
-                id: newRowId,
-                height: blockType === 'freeform' ? 300 : 100,
-                layout: [100],
-                elements: [],
-                backgroundColor: '#ffffff',
-            };
-
-            if (blockType === 'divider') {
-                newRow.elements.push({
-                    id: generateId(),
-                    type: 'divider',
-                    x: 20,
-                    y: 45,
-                    width: CANVAS_WIDTH - 40,
-                    height: 10,
-                    fill: '#d1d5db',
-                });
-                newRow.height = 100;
-            } else if (blockType === 'spacer') {
-                newRow.elements.push({
-                    id: generateId(),
-                    type: 'spacer',
-                    x: 0,
-                    y: 0,
-                    width: CANVAS_WIDTH,
-                    height: 50,
-                    fill: 'transparent',
-                });
-                newRow.height = 50;
-            }
-
-            let insertIndex = state.rows.length;
-            if (state.selectedRowId) {
-                const selectedIndex = state.rows.findIndex(
-                    (r) => r.id === state.selectedRowId
-                );
-                if (selectedIndex !== -1) insertIndex = selectedIndex + 1;
-            }
-
-            const newRows = [...state.rows];
-            newRows.splice(insertIndex, 0, newRow);
-
-            return {
-                ...state,
-                rows: newRows,
-                selectedRowId: newRowId,
-                selectedElementId:
-                    newRow.elements.length > 0 ? newRow.elements[0].id : null,
-            };
-        }
-
-        case 'ADD_OR_UPDATE_ROW_LAYOUT': {
-            if (!action.forceAdd && state.selectedRowId) {
-                return {
-                    ...state,
-                    rows: state.rows.map((row) =>
-                        row.id === state.selectedRowId
-                            ? { ...row, layout: action.layout }
-                            : row
-                    ),
-                };
-            }
-
-            const newRow: EditorRow = {
-                id: generateId(),
-                height: action.minHeight || 150,
-                layout: action.layout,
-                elements: [],
-                backgroundColor: '#ffffff',
-            };
-
-            let newRows = [...state.rows];
-            let insertIndex = state.rows.length;
-
-            if (typeof action.index === 'number') {
-                insertIndex = action.index;
-            } else if (state.selectedRowId && !action.forceAdd) {
-                const selectedIndex = state.rows.findIndex(
-                    (r) => r.id === state.selectedRowId
-                );
-                if (selectedIndex !== -1) insertIndex = selectedIndex + 1;
-            }
-
-            newRows.splice(insertIndex, 0, newRow);
-
-            return {
-                ...state,
-                rows: newRows,
-                selectedRowId: newRow.id,
-                selectedElementId: null,
-            };
-        }
-
-        case 'DUPLICATE_SELECTION': {
-            if (state.selectedElementId && state.selectedRowId) {
-                const rowIndex = state.rows.findIndex(
-                    (r) => r.id === state.selectedRowId
-                );
-                if (rowIndex === -1) return state;
-                const row = state.rows[rowIndex];
-                const element = row.elements.find(
-                    (e) => e.id === state.selectedElementId
-                );
-                if (!element) return state;
-                const newElement = {
-                    ...element,
-                    id: generateId(),
-                    x: element.x + 20,
-                    y: element.y + 20,
-                };
-                const newRows = [...state.rows];
-                newRows[rowIndex] = {
-                    ...row,
-                    elements: [...row.elements, newElement],
-                };
-                return {
-                    ...state,
-                    rows: newRows,
-                    selectedElementId: newElement.id,
-                };
-            } else if (state.selectedRowId) {
-                const index = state.rows.findIndex(
-                    (r) => r.id === state.selectedRowId
-                );
-                if (index === -1) return state;
-                const rowToCopy = state.rows[index];
-                const newRow: EditorRow = {
-                    ...rowToCopy,
-                    id: generateId(),
-                    elements: rowToCopy.elements.map((el) => ({
-                        ...el,
-                        id: generateId(),
-                    })),
-                };
-                const newRows = [...state.rows];
-                newRows.splice(index + 1, 0, newRow);
-                return {
-                    ...state,
-                    rows: newRows,
-                    selectedRowId: newRow.id,
-                    selectedElementId: null,
-                };
-            }
-            return state;
-        }
-
-        case 'DUPLICATE_ROW': {
-            const index = state.rows.findIndex((r) => r.id === action.rowId);
-            if (index === -1) return state;
-            const rowToCopy = state.rows[index];
-            const newRow: EditorRow = {
-                ...rowToCopy,
-                id: generateId(),
-                elements: rowToCopy.elements.map((el) => ({
-                    ...el,
-                    id: generateId(),
-                })),
-            };
-            const newRows = [...state.rows];
-            newRows.splice(index + 1, 0, newRow);
-            return {
-                ...state,
-                rows: newRows,
-                selectedRowId: newRow.id,
-                selectedElementId: null,
-            };
-        }
-
-        case 'RESIZE_COLUMN': {
-            const { rowId, dividerIndex, deltaPct } = action;
-            return {
-                ...state,
-                rows: state.rows.map((row) => {
-                    if (row.id !== rowId) return row;
-                    const newLayout = [...row.layout];
-                    const currentLeft = newLayout[dividerIndex];
-                    const currentRight = newLayout[dividerIndex + 1];
-                    let newLeft = currentLeft + deltaPct;
-                    let newRight = currentRight - deltaPct;
-                    if (newLeft < 5) {
-                        const diff = 5 - newLeft;
-                        newLeft = 5;
-                        newRight -= diff;
-                    } else if (newRight < 5) {
-                        const diff = 5 - newRight;
-                        newRight = 5;
-                        newLeft -= diff;
-                    }
-                    newLayout[dividerIndex] = newLeft;
-                    newLayout[dividerIndex + 1] = newRight;
-                    return { ...row, layout: newLayout };
-                }),
-            };
-        }
-
-        case 'SELECT_ROW':
-            return {
-                ...state,
-                selectedRowId: action.id,
-                selectedElementId: null,
-            };
-
-        case 'SELECT_ELEMENT':
-            return {
-                ...state,
-                selectedRowId: action.rowId,
-                selectedElementId: action.elId,
-            };
-
-        case 'ADD_ELEMENT':
-            return {
-                ...state,
-                rows: state.rows.map((row) => {
-                    if (row.id !== action.rowId) return row;
-
-                    let colX = 0;
-                    const colRanges = row.layout.map((pct) => {
-                        const w = (CANVAS_WIDTH * pct) / 100;
-                        const range = {
-                            start: colX,
-                            end: colX + w,
-                            width: w,
-                            center: colX + w / 2,
-                        };
-                        colX += w;
-                        return range;
-                    });
-
-                    let finalX = 0;
-                    let finalY = 20;
-                    let finalW = 80;
-                    let finalH = 80;
-                    if (action.elementType === 'text') {
-                        finalW = 120;
-                        finalH = 40;
-                    }
-                    if (action.elementType === 'button') {
-                        finalW = 100;
-                        finalH = 40;
-                    }
-                    if (action.elementType === 'divider') {
-                        finalW = 200;
-                        finalH = 10;
-                    }
-                    if (action.elementType === 'spacer') {
-                        finalW = 100;
-                        finalH = 50;
-                    }
-
-                    if (
-                        typeof action.x === 'number' &&
-                        typeof action.y === 'number'
-                    ) {
-                        const targetCol =
-                            colRanges.find(
-                                (c) =>
-                                    action.x! >= c.start && action.x! <= c.end
-                            ) || colRanges[0];
-                        if (action.elementType === 'divider')
-                            finalW = targetCol.width * 0.9;
-                        else if (
-                            action.elementType !== 'text' &&
-                            action.elementType !== 'button' &&
-                            action.elementType !== 'spacer'
-                        ) {
-                            finalW = Math.min(targetCol.width * 0.8, 150);
-                            finalH =
-                                action.elementType === 'image'
-                                    ? finalW
-                                    : finalW;
-                        }
-                        finalX = action.x - finalW / 2;
-                        finalY = action.y - finalH / 2;
-                    } else {
-                        const occupiedCols = new Set<number>();
-                        row.elements.forEach((el) => {
-                            const center = el.x + el.width / 2;
-                            const colIdx = colRanges.findIndex(
-                                (c) => center >= c.start && center < c.end
-                            );
-                            if (colIdx !== -1) occupiedCols.add(colIdx);
-                        });
-                        let targetColIndex = colRanges.findIndex(
-                            (_, i) => !occupiedCols.has(i)
-                        );
-                        if (targetColIndex === -1)
-                            targetColIndex =
-                                row.elements.length % colRanges.length;
-                        const targetCol = colRanges[targetColIndex];
-                        if (action.elementType === 'divider')
-                            finalW = targetCol.width * 0.9;
-                        else if (
-                            action.elementType !== 'text' &&
-                            action.elementType !== 'button' &&
-                            action.elementType !== 'spacer'
-                        ) {
-                            finalW = Math.min(targetCol.width * 0.8, 150);
-                            finalH =
-                                action.elementType === 'image'
-                                    ? finalW
-                                    : finalW;
-                        }
-                        finalX = targetCol.center - finalW / 2;
-                        finalY = 20;
-                    }
-
-                    const newEl: EditorElement = {
-                        id: generateId(),
-                        type: action.elementType,
-                        x: finalX,
-                        y: finalY,
-                        width: finalW,
-                        height: finalH,
-                        fill:
-                            action.elementType === 'image'
-                                ? undefined
-                                : '#94a3b8',
-                        src: action.src,
-                        text: action.text,
-                    };
-
-                    if (action.elementType === 'rect') newEl.fill = '#6366f1';
-                    if (action.elementType === 'circle') newEl.fill = '#10b981';
-                    if (action.elementType === 'triangle')
-                        newEl.fill = '#f59e0b';
-                    if (action.elementType === 'star') newEl.fill = '#ec4899';
-                    if (action.elementType === 'polygon')
-                        newEl.fill = '#3b82f6';
-                    if (action.elementType === 'button') newEl.fill = '#3b82f6';
-                    if (action.elementType === 'text')
-                        newEl.fill = 'transparent';
-                    if (action.elementType === 'divider')
-                        newEl.fill = '#d1d5db';
-                    if (action.elementType === 'spacer')
-                        newEl.fill = 'transparent';
-
-                    return { ...row, elements: [...row.elements, newEl] };
-                }),
-            };
-
-        case 'UPDATE_ELEMENT':
-            return {
-                ...state,
-                rows: state.rows.map((row) => {
-                    if (row.id !== action.rowId) return row;
-                    const updatedElements = row.elements.map((el) => {
-                        if (el.id !== action.elId) return el;
-                        return { ...el, ...action.attrs };
-                    });
-                    const maxBottom = updatedElements.reduce(
-                        (max, el) => Math.max(max, el.y + el.height),
-                        0
-                    );
-                    const newHeight = Math.max(150, maxBottom + 40);
-                    return {
-                        ...row,
-                        elements: updatedElements,
-                        height: newHeight,
-                    };
-                }),
-            };
-
-        case 'MOVE_ELEMENT': {
-            const { sourceRowId, targetRowId, elementId, newX, newY } = action;
-            const sourceRow = state.rows.find((r) => r.id === sourceRowId);
-            if (!sourceRow) return state;
-            const element = sourceRow.elements.find((e) => e.id === elementId);
-            if (!element) return state;
-
-            const movedElement = { ...element, x: newX, y: newY };
-
-            return {
-                ...state,
-                rows: state.rows.map((row) => {
-                    if (row.id === sourceRowId) {
-                        return {
-                            ...row,
-                            elements: row.elements.filter(
-                                (e) => e.id !== elementId
-                            ),
-                        };
-                    }
-                    if (row.id === targetRowId) {
-                        const potentialBottom = newY + element.height;
-                        const newHeight = Math.max(
-                            row.height,
-                            potentialBottom + 40,
-                            150
-                        );
-                        return {
-                            ...row,
-                            height: newHeight,
-                            elements: [...row.elements, movedElement],
-                        };
-                    }
-                    return row;
-                }),
-                selectedRowId: targetRowId,
-                selectedElementId: elementId,
-            };
-        }
-
-        case 'UPDATE_ROW_HEIGHT':
-            return {
-                ...state,
-                rows: state.rows.map((r) =>
-                    r.id === action.rowId
-                        ? { ...r, height: Math.max(50, action.height) }
-                        : r
-                ),
-            };
-
-        case 'DELETE_SELECTION':
-            if (state.selectedElementId && state.selectedRowId) {
-                return {
-                    ...state,
-                    rows: state.rows.map((row) => {
-                        if (row.id !== state.selectedRowId) return row;
-                        return {
-                            ...row,
-                            elements: row.elements.filter(
-                                (e) => e.id !== state.selectedElementId
-                            ),
-                        };
-                    }),
-                    selectedElementId: null,
-                };
-            } else if (state.selectedRowId) {
-                const index = state.rows.findIndex(
-                    (r) => r.id === state.selectedRowId
-                );
-                const newRows = state.rows.filter(
-                    (r) => r.id !== state.selectedRowId
-                );
-                let newSelectedId = null;
-                if (newRows.length > 0) {
-                    const newIndex = Math.max(0, index - 1);
-                    newSelectedId = newRows[newIndex]
-                        ? newRows[newIndex].id
-                        : newRows[0].id;
-                }
-                return {
-                    ...state,
-                    rows: newRows,
-                    selectedRowId: newSelectedId,
-                    selectedElementId: null,
-                };
-            }
-            return state;
-
-        default:
-            return state;
-    }
-};
-
-// --- 3. CANVAS ENGINE ---
+// --- CANVAS ENGINE ---
 
 const useCanvasEngine = (
     canvasRef: React.RefObject<HTMLCanvasElement>,
@@ -1222,7 +566,7 @@ const useCanvasEngine = (
 
             // PASS 2: Draw Row Controls ON TOP (Hovered)
             if (hoveredRowData && !selectedRowData) {
-                const row = hoveredRowData;
+                const row = hoveredRowData as EditorRow;
                 const logicalViewportLeft = -paperScreenX / state.zoom;
                 const logicalViewportWidth = viewportWidth / state.zoom;
                 const logicalRightEdge =
@@ -1243,7 +587,7 @@ const useCanvasEngine = (
 
             // PASS 3: Draw Selected Row Controls ON TOP (Selected)
             if (selectedRowData && state.selectedRowId) {
-                const row = selectedRowData;
+                const row = selectedRowData as EditorRow;
                 const logicalViewportLeft = -paperScreenX / state.zoom;
                 const logicalViewportWidth = viewportWidth / state.zoom;
 
@@ -1332,7 +676,7 @@ const useCanvasEngine = (
 
             // PASS 4: Draw Selected Element LAST (On Top of Everything)
             if (selectedElement && selectedElementRowY) {
-                const el = selectedElement;
+                const el = selectedElement as EditorElement;
                 ctx.save();
                 ctx.translate(0, selectedElementRowY);
                 ctx.translate(el.x, el.y);
@@ -1629,18 +973,7 @@ const MediaItem = ({ src }: { src: string }) => {
         </div>
     );
 };
-const SAMPLE_IMAGES = [
-    'https://images.pexels.com/photos/1624496/pexels-photo-1624496.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/1366919/pexels-photo-1366919.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/1428277/pexels-photo-1428277.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/167699/pexels-photo-167699.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/2693529/pexels-photo-2693529.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/3052361/pexels-photo-3052361.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/8100784/pexels-photo-8100784.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/1108099/pexels-photo-1108099.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/1170986/pexels-photo-1170986.jpeg?auto=compress&cs=tinysrgb&w=200',
-    'https://images.pexels.com/photos/1761279/pexels-photo-1761279.jpeg?auto=compress&cs=tinysrgb&w=200',
-];
+// SAMPLE_IMAGES moved to DEFAULT_SAMPLE_IMAGES at the top level
 
 // New Components for Blocks Panel (Unchanged)
 const FreeFormBlock = ({ onClick }: { onClick: () => void }) => (
@@ -1668,7 +1001,7 @@ const SpacerBlock = ({ onClick }: { onClick: () => void }) => (
     </div>
 );
 
-const Sidebar = ({ onAddRow, onAddElement, onAddSpecialBlock }: any) => {
+const Sidebar = ({ onAddRow, onAddElement, onAddSpecialBlock, sampleImages = [] }: { onAddRow: (layout: number[]) => void; onAddElement: (type: ElementType, src?: string) => void; onAddSpecialBlock: (type: 'freeform' | 'divider' | 'spacer') => void; sampleImages?: string[] }) => {
     const [activeTab, setActiveTab] = useState<
         'blocks' | 'media' | 'shapes' | 'text' | 'button'
     >('blocks');
@@ -1828,7 +1161,7 @@ const Sidebar = ({ onAddRow, onAddElement, onAddSpecialBlock }: any) => {
                         <h1 className="text-2xl font-bold col-span-2 mb-4">
                             Media
                         </h1>
-                        {SAMPLE_IMAGES.map((src, i) => (
+                        {sampleImages.map((src, i) => (
                             <div
                                 key={i}
                                 onClick={() => onAddElement('image', src)}
@@ -2004,8 +1337,54 @@ const TopBar = ({ width, height }: { width: number; height: number }) => (
     </div>
 );
 
-const App = () => {
-    const [state, dispatch] = useReducer(editorReducer, initialState);
+// Default sample images for the media panel
+const DEFAULT_SAMPLE_IMAGES = [
+    'https://images.pexels.com/photos/1624496/pexels-photo-1624496.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/1366919/pexels-photo-1366919.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/1428277/pexels-photo-1428277.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/167699/pexels-photo-167699.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/2693529/pexels-photo-2693529.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/3052361/pexels-photo-3052361.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/8100784/pexels-photo-8100784.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/1108099/pexels-photo-1108099.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/1170986/pexels-photo-1170986.jpeg?auto=compress&cs=tinysrgb&w=200',
+    'https://images.pexels.com/photos/1761279/pexels-photo-1761279.jpeg?auto=compress&cs=tinysrgb&w=200',
+];
+
+/**
+ * CanvasEditor - A powerful email builder component using raw HTML5 Canvas
+ * 
+ * @example
+ * ```tsx
+ * import { CanvasEditor } from './components/CanvasEditor';
+ * 
+ * function App() {
+ *   return (
+ *     <CanvasEditor
+ *       onChange={(state) => console.log('State changed:', state)}
+ *       showSidebar={true}
+ *       showTopBar={true}
+ *     />
+ *   );
+ * }
+ * ```
+ */
+const CanvasEditor = ({
+    initialState: initialStateOverrides,
+    onChange,
+    sampleImages = DEFAULT_SAMPLE_IMAGES,
+    showSidebar = true,
+    showTopBar = true,
+    showZoomControls = true,
+    className = '',
+    style,
+}: CanvasEditorProps) => {
+    const [state, dispatch] = useReducer(editorReducer, createInitialState(initialStateOverrides));
+
+    // Call onChange when state changes
+    useEffect(() => {
+        onChange?.(state);
+    }, [state, onChange]);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [viewportW, setViewportW] = useState(0);
@@ -2687,10 +2066,11 @@ const App = () => {
             : 0;
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden font-sans bg-gray-100 text-gray-900 select-none flex-col">
-            <TopBar width={CANVAS_WIDTH} height={totalHeight} />
+        <div className={`flex h-screen w-screen overflow-hidden font-sans bg-gray-100 text-gray-900 select-none flex-col ${className}`} style={style}>
+            {showTopBar && <TopBar width={CANVAS_WIDTH} height={totalHeight} />}
 
             <div className="flex-1 flex overflow-hidden relative">
+                {showSidebar && (
                 <Sidebar
                     onAddRow={(layout) =>
                         dispatch({ type: 'ADD_OR_UPDATE_ROW_LAYOUT', layout })
@@ -2706,7 +2086,9 @@ const App = () => {
                     onAddSpecialBlock={(type) =>
                         dispatch({ type: 'ADD_SPECIAL_BLOCK', blockType: type })
                     }
+                        sampleImages={sampleImages}
                 />
+                )}
 
                 <div
                     ref={containerRef}
@@ -2800,14 +2182,20 @@ const App = () => {
                         </div>
                     )}
 
+                    {showZoomControls && (
                     <ZoomControls
                         zoom={state.zoom}
                         setZoom={(z) => dispatch({ type: 'SET_ZOOM', zoom: z })}
                     />
+                    )}
                 </div>
             </div>
         </div>
     );
 };
 
-export default App;
+// Legacy export for backward compatibility
+const App = CanvasEditor;
+
+export default CanvasEditor;
+export { CanvasEditor, App };

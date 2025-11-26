@@ -1,15 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import {
-    Stage,
-    Layer,
-    Rect,
-    Circle,
-    Text,
-    Image as KonvaImage,
-    Line,
-    Group,
-} from 'react-konva';
+import { Stage, Layer, Rect, Circle, Text, Image as KonvaImage, Line, Group } from 'react-konva';
 import EditorStore from '../../common/stores/EditorStore';
 import {
     CANVAS_WIDTH,
@@ -128,10 +119,7 @@ const RowResizeHandle = observer(
                 dragBoundFunc={(pos) => {
                     // Calculate delta (both pos.y and initialYRef are in logical coordinates)
                     const deltaY = pos.y - initialYRef.current;
-                    const newHeight = Math.max(
-                        50,
-                        initialHeightRef.current + deltaY
-                    );
+                    const newHeight = Math.max(50, initialHeightRef.current + deltaY);
                     // Position Group so Rect center aligns with bottom border, centered on stage
                     // stageCenterX is recalculated on each render based on viewport and zoom
                     return {
@@ -389,14 +377,8 @@ const ImageElement = observer(
                         width={el.width}
                         height={el.height}
                         image={image}
-                        stroke={
-                            isSelected || isHovered
-                                ? SELECTION_COLOR
-                                : undefined
-                        }
-                        strokeWidth={
-                            (isSelected || isHovered ? 1 : 0) / store.zoom
-                        }
+                        stroke={isSelected || isHovered ? SELECTION_COLOR : undefined}
+                        strokeWidth={(isSelected || isHovered ? 1 : 0) / store.zoom}
                         draggable
                         onClick={(e) => {
                             e.cancelBubble = true;
@@ -406,22 +388,13 @@ const ImageElement = observer(
                             const row = store.rows.find((r) => r.id === rowId);
                             if (!row) return;
                             const newY = e.target.y() - rowY;
-                            const currentMaxBottom = row.elements.reduce(
-                                (max, elem) => {
-                                    if (elem.id === el.id) {
-                                        return Math.max(
-                                            max,
-                                            newY + elem.height
-                                        );
-                                    }
-                                    return Math.max(max, elem.y + elem.height);
-                                },
-                                0
-                            );
-                            const newHeight = Math.max(
-                                150,
-                                currentMaxBottom + 40
-                            );
+                            const currentMaxBottom = row.elements.reduce((max, elem) => {
+                                if (elem.id === el.id) {
+                                    return Math.max(max, newY + elem.height);
+                                }
+                                return Math.max(max, elem.y + elem.height);
+                            }, 0);
+                            const newHeight = Math.max(150, currentMaxBottom + 40);
                             if (newHeight > row.height) {
                                 onRowHeightChange(rowId, newHeight);
                             }
@@ -447,14 +420,8 @@ const ImageElement = observer(
                         width={el.width}
                         height={el.height}
                         fill="#e5e7eb"
-                        stroke={
-                            isSelected || isHovered
-                                ? SELECTION_COLOR
-                                : undefined
-                        }
-                        strokeWidth={
-                            (isSelected || isHovered ? 1 : 0) / store.zoom
-                        }
+                        stroke={isSelected || isHovered ? SELECTION_COLOR : undefined}
+                        strokeWidth={(isSelected || isHovered ? 1 : 0) / store.zoom}
                     />
                 )}
                 {isSelected && (
@@ -503,9 +470,7 @@ const KonvaEditor = observer(() => {
     const [scrollY, setScrollY] = useState(0);
     const [showColorPicker, setShowColorPicker] = useState(false);
     // Track temporary heights during drag for smooth resizing
-    const [tempHeights, setTempHeights] = useState<Map<string, number>>(
-        new Map()
-    );
+    const [tempHeights, setTempHeights] = useState<Map<string, number>>(new Map());
     // Track column resizing state
     const [isResizingColumn, setIsResizingColumn] = useState(false);
 
@@ -513,10 +478,7 @@ const KonvaEditor = observer(() => {
         return tempHeights.get(rowId) ?? defaultHeight;
     };
 
-    const totalHeight = store.rows.reduce(
-        (acc, r) => acc + getRowHeight(r.id, r.height),
-        0
-    );
+    const totalHeight = store.rows.reduce((acc, r) => acc + getRowHeight(r.id, r.height), 0);
     const totalLogicalHeight = Math.max(800, totalHeight + 100);
 
     useEffect(() => {
@@ -538,10 +500,7 @@ const KonvaEditor = observer(() => {
 
             return () => {
                 resizeObserver.disconnect();
-                containerRef.current?.removeEventListener(
-                    'scroll',
-                    handleScroll
-                );
+                containerRef.current?.removeEventListener('scroll', handleScroll);
             };
         }
     }, []);
@@ -607,10 +566,7 @@ const KonvaEditor = observer(() => {
             let dropYInRow = 0;
 
             for (const row of store.rows) {
-                if (
-                    coords.logicalY >= currentY &&
-                    coords.logicalY <= currentY + row.height
-                ) {
+                if (coords.logicalY >= currentY && coords.logicalY <= currentY + row.height) {
                     targetRowId = row.id;
                     dropYInRow = coords.logicalY - currentY;
                     break;
@@ -625,11 +581,7 @@ const KonvaEditor = observer(() => {
                     src || undefined,
                     coords.paperX,
                     dropYInRow,
-                    type === 'text'
-                        ? 'Heading'
-                        : type === 'button'
-                        ? 'Button'
-                        : undefined
+                    type === 'text' ? 'Heading' : type === 'button' ? 'Button' : undefined
                 );
             }
         }
@@ -648,10 +600,7 @@ const KonvaEditor = observer(() => {
                 let colAccumX = 0;
                 for (let i = 0; i < row.layout.length; i++) {
                     const colW = (CANVAS_WIDTH * row.layout[i]) / 100;
-                    if (
-                        coords.paperX >= colAccumX &&
-                        coords.paperX < colAccumX + colW
-                    ) {
+                    if (coords.paperX >= colAccumX && coords.paperX < colAccumX + colW) {
                         target = { rowId: row.id, colIndex: i };
                         break;
                     }
@@ -677,24 +626,15 @@ const KonvaEditor = observer(() => {
 
     let contextMenuY = 0;
     let showContextMenu = false;
-    const selectedRowIndex = store.rows.findIndex(
-        (r) => r.id === store.selectedRowId
-    );
-    if (
-        store.selectedRowId &&
-        selectedRowIndex !== -1 &&
-        containerRef.current
-    ) {
+    const selectedRowIndex = store.rows.findIndex((r) => r.id === store.selectedRowId);
+    if (store.selectedRowId && selectedRowIndex !== -1 && containerRef.current) {
         let currentY = 40;
-        for (let i = 0; i < selectedRowIndex; i++)
-            currentY += store.rows[i].height;
+        for (let i = 0; i < selectedRowIndex; i++) currentY += store.rows[i].height;
         contextMenuY = currentY * store.zoom;
         showContextMenu = true;
     }
     const contextMenuLeft =
-        viewportW > 0
-            ? viewportW / 2 + (CANVAS_WIDTH * store.zoom) / 2 + 10
-            : 0;
+        viewportW > 0 ? viewportW / 2 + (CANVAS_WIDTH * store.zoom) / 2 + 10 : 0;
 
     const paperScreenW = CANVAS_WIDTH * store.zoom;
     const paperScreenX = viewportW > 0 ? (viewportW - paperScreenW) / 2 : 0;
@@ -705,19 +645,19 @@ const KonvaEditor = observer(() => {
     const stageCenterX = (stageWidth / 2 - paperScreenX) / store.zoom;
 
     // Calculate row Y positions using temporary heights during drag
-    const rowPositions = store.rows.reduce((acc, row) => {
-        const height = getRowHeight(row.id, row.height);
-        const y =
-            acc.length === 0
-                ? 40
-                : acc[acc.length - 1].y +
-                  getRowHeight(
-                      acc[acc.length - 1].id,
-                      acc[acc.length - 1].height
-                  );
-        acc.push({ ...row, y, height });
-        return acc;
-    }, [] as Array<{ y: number; height: number } & (typeof store.rows)[0]>);
+    const rowPositions = store.rows.reduce(
+        (acc, row) => {
+            const height = getRowHeight(row.id, row.height);
+            const y =
+                acc.length === 0
+                    ? 40
+                    : acc[acc.length - 1].y +
+                      getRowHeight(acc[acc.length - 1].id, acc[acc.length - 1].height);
+            acc.push({ ...row, y, height });
+            return acc;
+        },
+        [] as Array<{ y: number; height: number } & (typeof store.rows)[0]>
+    );
 
     return (
         <div className="flex h-screen w-screen overflow-hidden font-sans bg-gray-100 text-gray-900 select-none flex-col">
@@ -726,9 +666,7 @@ const KonvaEditor = observer(() => {
             <div className="flex-1 flex overflow-hidden relative">
                 <Sidebar
                     onAddRow={(layout) => store.addOrUpdateRowLayout(layout)}
-                    onAddElement={(type, src) =>
-                        store.addElement(store.selectedRowId!, type, src)
-                    }
+                    onAddElement={(type, src) => store.addElement(store.selectedRowId!, type, src)}
                     onAddSpecialBlock={(type) => store.addSpecialBlock(type)}
                 />
 
@@ -793,12 +731,9 @@ const KonvaEditor = observer(() => {
 
                                     {/* Rows */}
                                     {rowPositions.map((row) => {
-                                        const isRowSelected =
-                                            store.selectedRowId === row.id;
-                                        const isRowHovered =
-                                            store.hoveredRowId === row.id;
-                                        const isDragOver =
-                                            store.dragTarget?.rowId === row.id;
+                                        const isRowSelected = store.selectedRowId === row.id;
+                                        const isRowHovered = store.hoveredRowId === row.id;
+                                        const isDragOver = store.dragTarget?.rowId === row.id;
 
                                         return (
                                             <Group key={row.id}>
@@ -809,42 +744,26 @@ const KonvaEditor = observer(() => {
                                                     width={CANVAS_WIDTH}
                                                     height={row.height}
                                                     {...getFillProps(
-                                                        row.backgroundColor ||
-                                                            '#ffffff',
+                                                        row.backgroundColor || '#ffffff',
                                                         CANVAS_WIDTH
                                                     )}
-                                                    onClick={() =>
-                                                        store.selectRow(row.id)
-                                                    }
-                                                    onMouseEnter={() =>
-                                                        store.setHoveredRow(
-                                                            row.id
-                                                        )
-                                                    }
-                                                    onMouseLeave={() =>
-                                                        store.setHoveredRow(
-                                                            null
-                                                        )
-                                                    }
+                                                    onClick={() => store.selectRow(row.id)}
+                                                    onMouseEnter={() => store.setHoveredRow(row.id)}
+                                                    onMouseLeave={() => store.setHoveredRow(null)}
                                                 />
 
                                                 {/* Row Hover/Selection Border */}
-                                                {(isRowHovered || isDragOver) &&
-                                                    !isRowSelected && (
-                                                        <Rect
-                                                            x={0}
-                                                            y={row.y}
-                                                            width={CANVAS_WIDTH}
-                                                            height={row.height}
-                                                            stroke={
-                                                                ROW_HOVER_COLOR
-                                                            }
-                                                            strokeWidth={
-                                                                1.5 / store.zoom
-                                                            }
-                                                            listening={false}
-                                                        />
-                                                    )}
+                                                {(isRowHovered || isDragOver) && !isRowSelected && (
+                                                    <Rect
+                                                        x={0}
+                                                        y={row.y}
+                                                        width={CANVAS_WIDTH}
+                                                        height={row.height}
+                                                        stroke={ROW_HOVER_COLOR}
+                                                        strokeWidth={1.5 / store.zoom}
+                                                        listening={false}
+                                                    />
+                                                )}
 
                                                 {/* Selected Row Border */}
                                                 {isRowSelected && (
@@ -852,43 +771,27 @@ const KonvaEditor = observer(() => {
                                                         {/* Top border line - extends full viewport width */}
                                                         <Line
                                                             points={[
-                                                                (0 -
-                                                                    paperScreenX) /
-                                                                    store.zoom,
+                                                                (0 - paperScreenX) / store.zoom,
                                                                 row.y,
-                                                                (stageWidth -
-                                                                    paperScreenX) /
+                                                                (stageWidth - paperScreenX) /
                                                                     store.zoom,
                                                                 row.y,
                                                             ]}
-                                                            stroke={
-                                                                PRIMARY_COLOR
-                                                            }
-                                                            strokeWidth={
-                                                                1 / store.zoom
-                                                            }
+                                                            stroke={PRIMARY_COLOR}
+                                                            strokeWidth={1 / store.zoom}
                                                             listening={false}
                                                         />
                                                         {/* Bottom border line - extends full viewport width */}
                                                         <Line
                                                             points={[
-                                                                (0 -
-                                                                    paperScreenX) /
+                                                                (0 - paperScreenX) / store.zoom,
+                                                                row.y + row.height,
+                                                                (stageWidth - paperScreenX) /
                                                                     store.zoom,
-                                                                row.y +
-                                                                    row.height,
-                                                                (stageWidth -
-                                                                    paperScreenX) /
-                                                                    store.zoom,
-                                                                row.y +
-                                                                    row.height,
+                                                                row.y + row.height,
                                                             ]}
-                                                            stroke={
-                                                                PRIMARY_COLOR
-                                                            }
-                                                            strokeWidth={
-                                                                1 / store.zoom
-                                                            }
+                                                            stroke={PRIMARY_COLOR}
+                                                            strokeWidth={1 / store.zoom}
                                                             listening={false}
                                                         />
                                                         {/* Add Row Button Top */}
@@ -896,18 +799,13 @@ const KonvaEditor = observer(() => {
                                                             x={CANVAS_WIDTH / 2}
                                                             y={
                                                                 row.y -
-                                                                ADD_BUTTON_OFFSET /
-                                                                    store.zoom
+                                                                ADD_BUTTON_OFFSET / store.zoom
                                                             }
                                                             onClick={(e) => {
-                                                                e.cancelBubble =
-                                                                    true;
-                                                                const index =
-                                                                    store.rows.findIndex(
-                                                                        (r) =>
-                                                                            r.id ===
-                                                                            row.id
-                                                                    );
+                                                                e.cancelBubble = true;
+                                                                const index = store.rows.findIndex(
+                                                                    (r) => r.id === row.id
+                                                                );
                                                                 store.addOrUpdateRowLayout(
                                                                     [100],
                                                                     index,
@@ -917,52 +815,31 @@ const KonvaEditor = observer(() => {
                                                         >
                                                             {/* Hit area for easier clicking */}
                                                             <Circle
-                                                                radius={
-                                                                    10 /
-                                                                    store.zoom
-                                                                }
+                                                                radius={10 / store.zoom}
                                                                 fill="transparent"
                                                                 listening={true}
                                                             />
                                                             <Line
                                                                 points={[
-                                                                    -7 /
-                                                                        store.zoom,
+                                                                    -7 / store.zoom,
                                                                     0,
-                                                                    7 /
-                                                                        store.zoom,
+                                                                    7 / store.zoom,
                                                                     0,
                                                                 ]}
-                                                                stroke={
-                                                                    PRIMARY_COLOR
-                                                                }
-                                                                strokeWidth={
-                                                                    1.5 /
-                                                                    store.zoom
-                                                                }
-                                                                listening={
-                                                                    false
-                                                                }
+                                                                stroke={PRIMARY_COLOR}
+                                                                strokeWidth={1.5 / store.zoom}
+                                                                listening={false}
                                                             />
                                                             <Line
                                                                 points={[
                                                                     0,
-                                                                    -7 /
-                                                                        store.zoom,
+                                                                    -7 / store.zoom,
                                                                     0,
-                                                                    7 /
-                                                                        store.zoom,
+                                                                    7 / store.zoom,
                                                                 ]}
-                                                                stroke={
-                                                                    PRIMARY_COLOR
-                                                                }
-                                                                strokeWidth={
-                                                                    1.5 /
-                                                                    store.zoom
-                                                                }
-                                                                listening={
-                                                                    false
-                                                                }
+                                                                stroke={PRIMARY_COLOR}
+                                                                strokeWidth={1.5 / store.zoom}
+                                                                listening={false}
                                                             />
                                                         </Group>
                                                         {/* Add Row Button Bottom */}
@@ -971,18 +848,13 @@ const KonvaEditor = observer(() => {
                                                             y={
                                                                 row.y +
                                                                 row.height +
-                                                                ADD_BUTTON_OFFSET /
-                                                                    store.zoom
+                                                                ADD_BUTTON_OFFSET / store.zoom
                                                             }
                                                             onClick={(e) => {
-                                                                e.cancelBubble =
-                                                                    true;
-                                                                const index =
-                                                                    store.rows.findIndex(
-                                                                        (r) =>
-                                                                            r.id ===
-                                                                            row.id
-                                                                    );
+                                                                e.cancelBubble = true;
+                                                                const index = store.rows.findIndex(
+                                                                    (r) => r.id === row.id
+                                                                );
                                                                 store.addOrUpdateRowLayout(
                                                                     [100],
                                                                     index + 1,
@@ -992,52 +864,31 @@ const KonvaEditor = observer(() => {
                                                         >
                                                             {/* Hit area for easier clicking */}
                                                             <Circle
-                                                                radius={
-                                                                    10 /
-                                                                    store.zoom
-                                                                }
+                                                                radius={10 / store.zoom}
                                                                 fill="transparent"
                                                                 listening={true}
                                                             />
                                                             <Line
                                                                 points={[
-                                                                    -7 /
-                                                                        store.zoom,
+                                                                    -7 / store.zoom,
                                                                     0,
-                                                                    7 /
-                                                                        store.zoom,
+                                                                    7 / store.zoom,
                                                                     0,
                                                                 ]}
-                                                                stroke={
-                                                                    PRIMARY_COLOR
-                                                                }
-                                                                strokeWidth={
-                                                                    1.5 /
-                                                                    store.zoom
-                                                                }
-                                                                listening={
-                                                                    false
-                                                                }
+                                                                stroke={PRIMARY_COLOR}
+                                                                strokeWidth={1.5 / store.zoom}
+                                                                listening={false}
                                                             />
                                                             <Line
                                                                 points={[
                                                                     0,
-                                                                    -7 /
-                                                                        store.zoom,
+                                                                    -7 / store.zoom,
                                                                     0,
-                                                                    7 /
-                                                                        store.zoom,
+                                                                    7 / store.zoom,
                                                                 ]}
-                                                                stroke={
-                                                                    PRIMARY_COLOR
-                                                                }
-                                                                strokeWidth={
-                                                                    1.5 /
-                                                                    store.zoom
-                                                                }
-                                                                listening={
-                                                                    false
-                                                                }
+                                                                stroke={PRIMARY_COLOR}
+                                                                strokeWidth={1.5 / store.zoom}
+                                                                listening={false}
                                                             />
                                                         </Group>
                                                         {/* Resize Handle */}
@@ -1047,63 +898,38 @@ const KonvaEditor = observer(() => {
                                                                 height: row.height,
                                                             }}
                                                             store={store}
-                                                            stageCenterX={
-                                                                stageCenterX
-                                                            }
-                                                            onHeightChange={(
-                                                                height
-                                                            ) => {
-                                                                if (
-                                                                    height > 0
-                                                                ) {
-                                                                    setTempHeights(
-                                                                        (
+                                                            stageCenterX={stageCenterX}
+                                                            onHeightChange={(height) => {
+                                                                if (height > 0) {
+                                                                    setTempHeights((prev) => {
+                                                                        const newMap = new Map(
                                                                             prev
-                                                                        ) => {
-                                                                            const newMap =
-                                                                                new Map(
-                                                                                    prev
-                                                                                );
-                                                                            newMap.set(
-                                                                                row.id,
-                                                                                height
-                                                                            );
-                                                                            return newMap;
-                                                                        }
-                                                                    );
+                                                                        );
+                                                                        newMap.set(row.id, height);
+                                                                        return newMap;
+                                                                    });
                                                                 } else {
-                                                                    setTempHeights(
-                                                                        (
+                                                                    setTempHeights((prev) => {
+                                                                        const newMap = new Map(
                                                                             prev
-                                                                        ) => {
-                                                                            const newMap =
-                                                                                new Map(
-                                                                                    prev
-                                                                                );
-                                                                            newMap.delete(
-                                                                                row.id
-                                                                            );
-                                                                            return newMap;
-                                                                        }
-                                                                    );
+                                                                        );
+                                                                        newMap.delete(row.id);
+                                                                        return newMap;
+                                                                    });
                                                                 }
                                                             }}
                                                         />
                                                         {/* Row Badge */}
                                                         {(() => {
                                                             const logicalViewportLeft =
-                                                                -paperScreenX /
-                                                                store.zoom;
+                                                                -paperScreenX / store.zoom;
                                                             const logicalViewportWidth =
-                                                                stageWidth /
-                                                                store.zoom;
+                                                                stageWidth / store.zoom;
                                                             const logicalRightEdge =
                                                                 logicalViewportLeft +
                                                                 logicalViewportWidth;
-                                                            const badgeW =
-                                                                40 / store.zoom;
-                                                            const badgeH =
-                                                                20 / store.zoom;
+                                                            const badgeW = 40 / store.zoom;
+                                                            const badgeH = 20 / store.zoom;
                                                             const badgeX =
                                                                 logicalRightEdge -
                                                                 badgeW -
@@ -1116,57 +942,27 @@ const KonvaEditor = observer(() => {
                                                             return (
                                                                 <>
                                                                     <Rect
-                                                                        x={
-                                                                            badgeX
-                                                                        }
-                                                                        y={
-                                                                            badgeY
-                                                                        }
-                                                                        width={
-                                                                            badgeW
-                                                                        }
-                                                                        height={
-                                                                            badgeH
-                                                                        }
-                                                                        fill={
-                                                                            PRIMARY_COLOR
-                                                                        }
+                                                                        x={badgeX}
+                                                                        y={badgeY}
+                                                                        width={badgeW}
+                                                                        height={badgeH}
+                                                                        fill={PRIMARY_COLOR}
                                                                         cornerRadius={
-                                                                            4 /
-                                                                            store.zoom
+                                                                            4 / store.zoom
                                                                         }
-                                                                        listening={
-                                                                            false
-                                                                        }
+                                                                        listening={false}
                                                                     />
                                                                     <Text
-                                                                        x={
-                                                                            badgeX +
-                                                                            badgeW /
-                                                                                2
-                                                                        }
-                                                                        y={
-                                                                            badgeY +
-                                                                            badgeH /
-                                                                                2
-                                                                        }
+                                                                        x={badgeX + badgeW / 2}
+                                                                        y={badgeY + badgeH / 2}
                                                                         text="Row"
-                                                                        fontSize={
-                                                                            11 /
-                                                                            store.zoom
-                                                                        }
+                                                                        fontSize={11 / store.zoom}
                                                                         fill="white"
                                                                         align="center"
                                                                         verticalAlign="middle"
-                                                                        offsetX={
-                                                                            0
-                                                                        }
-                                                                        offsetY={
-                                                                            0
-                                                                        }
-                                                                        listening={
-                                                                            false
-                                                                        }
+                                                                        offsetX={0}
+                                                                        offsetY={0}
+                                                                        listening={false}
                                                                     />
                                                                 </>
                                                             );
@@ -1174,32 +970,23 @@ const KonvaEditor = observer(() => {
                                                         {/* Drag Handle (Dots Icon) */}
                                                         {(() => {
                                                             const logicalViewportLeft =
-                                                                -paperScreenX /
-                                                                store.zoom;
+                                                                -paperScreenX / store.zoom;
                                                             const logicalViewportWidth =
-                                                                stageWidth /
-                                                                store.zoom;
+                                                                stageWidth / store.zoom;
                                                             const logicalRightEdge =
                                                                 logicalViewportLeft +
                                                                 logicalViewportWidth;
                                                             const dragX =
-                                                                logicalRightEdge -
-                                                                30 / store.zoom;
-                                                            const dragY =
-                                                                row.y +
-                                                                row.height / 2;
-                                                            const dotSize =
-                                                                2 / store.zoom;
-                                                            const gap =
-                                                                4 / store.zoom;
+                                                                logicalRightEdge - 30 / store.zoom;
+                                                            const dragY = row.y + row.height / 2;
+                                                            const dotSize = 2 / store.zoom;
+                                                            const gap = 4 / store.zoom;
                                                             return (
                                                                 <Group
                                                                     x={dragX}
                                                                     y={dragY}
                                                                     draggable
-                                                                    dragBoundFunc={(
-                                                                        pos
-                                                                    ) => {
+                                                                    dragBoundFunc={(pos) => {
                                                                         // Constrain to vertical movement only
                                                                         return {
                                                                             x: dragX,
@@ -1209,56 +996,37 @@ const KonvaEditor = observer(() => {
                                                                     onDragStart={() => {
                                                                         const index =
                                                                             store.rows.findIndex(
-                                                                                (
-                                                                                    r
-                                                                                ) =>
-                                                                                    r.id ===
-                                                                                    row.id
+                                                                                (r) =>
+                                                                                    r.id === row.id
                                                                             );
-                                                                        if (
-                                                                            index !==
-                                                                            -1
-                                                                        ) {
+                                                                        if (index !== -1) {
                                                                             // Store initial row index for reordering
                                                                         }
                                                                     }}
-                                                                    onDragMove={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragMove={(e) => {
                                                                         const currentY =
                                                                             e.target.y();
                                                                         // Calculate which row index we're over based on row positions
                                                                         let currentYAccum = 0;
                                                                         let newTargetIndex =
-                                                                            store
-                                                                                .rows
-                                                                                .length;
+                                                                            store.rows.length;
                                                                         for (
                                                                             let i = 0;
-                                                                            i <
-                                                                            store
-                                                                                .rows
-                                                                                .length;
+                                                                            i < store.rows.length;
                                                                             i++
                                                                         ) {
                                                                             const rowH =
-                                                                                store
-                                                                                    .rows[
-                                                                                    i
-                                                                                ]
+                                                                                store.rows[i]
                                                                                     .height;
                                                                             if (
                                                                                 currentY <
                                                                                 currentYAccum +
-                                                                                    rowH /
-                                                                                        2
+                                                                                    rowH / 2
                                                                             ) {
-                                                                                newTargetIndex =
-                                                                                    i;
+                                                                                newTargetIndex = i;
                                                                                 break;
                                                                             }
-                                                                            currentYAccum +=
-                                                                                rowH;
+                                                                            currentYAccum += rowH;
                                                                         }
                                                                         store.setReorderTarget(
                                                                             newTargetIndex
@@ -1267,21 +1035,15 @@ const KonvaEditor = observer(() => {
                                                                     onDragEnd={() => {
                                                                         const fromIndex =
                                                                             store.rows.findIndex(
-                                                                                (
-                                                                                    r
-                                                                                ) =>
-                                                                                    r.id ===
-                                                                                    row.id
+                                                                                (r) =>
+                                                                                    r.id === row.id
                                                                             );
                                                                         const toIndex =
                                                                             store.reorderTargetIndex;
                                                                         if (
-                                                                            fromIndex !==
-                                                                                -1 &&
-                                                                            toIndex !==
-                                                                                null &&
-                                                                            toIndex !==
-                                                                                fromIndex
+                                                                            fromIndex !== -1 &&
+                                                                            toIndex !== null &&
+                                                                            toIndex !== fromIndex
                                                                         ) {
                                                                             store.reorderRow(
                                                                                 fromIndex,
@@ -1293,39 +1055,17 @@ const KonvaEditor = observer(() => {
                                                                         );
                                                                     }}
                                                                 >
-                                                                    {[0, 1].map(
-                                                                        (i) =>
-                                                                            [
-                                                                                0,
-                                                                                1,
-                                                                                2,
-                                                                            ].map(
-                                                                                (
-                                                                                    j
-                                                                                ) => (
-                                                                                    <Circle
-                                                                                        key={`${i}-${j}`}
-                                                                                        x={
-                                                                                            i *
-                                                                                            gap
-                                                                                        }
-                                                                                        y={
-                                                                                            j *
-                                                                                                gap -
-                                                                                            gap
-                                                                                        }
-                                                                                        radius={
-                                                                                            dotSize
-                                                                                        }
-                                                                                        fill={
-                                                                                            PRIMARY_COLOR
-                                                                                        }
-                                                                                        listening={
-                                                                                            false
-                                                                                        }
-                                                                                    />
-                                                                                )
-                                                                            )
+                                                                    {[0, 1].map((i) =>
+                                                                        [0, 1, 2].map((j) => (
+                                                                            <Circle
+                                                                                key={`${i}-${j}`}
+                                                                                x={i * gap}
+                                                                                y={j * gap - gap}
+                                                                                radius={dotSize}
+                                                                                fill={PRIMARY_COLOR}
+                                                                                listening={false}
+                                                                            />
+                                                                        ))
                                                                     )}
                                                                 </Group>
                                                             );
@@ -1336,8 +1076,7 @@ const KonvaEditor = observer(() => {
                                                 {/* Drag Target Highlight */}
                                                 {isDragOver &&
                                                     store.dragTarget &&
-                                                    typeof store.dragTarget
-                                                        .colIndex ===
+                                                    typeof store.dragTarget.colIndex ===
                                                         'number' && (
                                                         <Rect
                                                             x={
@@ -1345,17 +1084,11 @@ const KonvaEditor = observer(() => {
                                                                     row.layout
                                                                         .slice(
                                                                             0,
-                                                                            store
-                                                                                .dragTarget
+                                                                            store.dragTarget
                                                                                 .colIndex
                                                                         )
                                                                         .reduce(
-                                                                            (
-                                                                                a,
-                                                                                b
-                                                                            ) =>
-                                                                                a +
-                                                                                b,
+                                                                            (a, b) => a + b,
                                                                             0
                                                                         )) /
                                                                 100
@@ -1364,20 +1097,14 @@ const KonvaEditor = observer(() => {
                                                             width={
                                                                 (CANVAS_WIDTH *
                                                                     row.layout[
-                                                                        store
-                                                                            .dragTarget
-                                                                            .colIndex
+                                                                        store.dragTarget.colIndex
                                                                     ]) /
                                                                 100
                                                             }
                                                             height={row.height}
                                                             fill="rgba(59, 130, 246, 0.1)"
-                                                            stroke={
-                                                                DROP_TARGET_COLOR
-                                                            }
-                                                            strokeWidth={
-                                                                2 / store.zoom
-                                                            }
+                                                            stroke={DROP_TARGET_COLOR}
+                                                            strokeWidth={2 / store.zoom}
                                                             listening={false}
                                                         />
                                                     )}
@@ -1385,252 +1112,180 @@ const KonvaEditor = observer(() => {
                                                 {/* Column Guides */}
                                                 {isRowSelected && (
                                                     <>
-                                                        {row.layout.map(
-                                                            (pct, i) => {
-                                                                let colX = 0;
-                                                                for (
-                                                                    let j = 0;
-                                                                    j < i;
-                                                                    j++
-                                                                ) {
-                                                                    colX +=
-                                                                        (CANVAS_WIDTH *
-                                                                            row
-                                                                                .layout[
-                                                                                j
-                                                                            ]) /
-                                                                        100;
-                                                                }
-                                                                const colW =
-                                                                    (CANVAS_WIDTH *
-                                                                        pct) /
+                                                        {row.layout.map((pct, i) => {
+                                                            let colX = 0;
+                                                            for (let j = 0; j < i; j++) {
+                                                                colX +=
+                                                                    (CANVAS_WIDTH * row.layout[j]) /
                                                                     100;
-                                                                const dividerX =
-                                                                    colX + colW;
-                                                                return (
-                                                                    <React.Fragment
-                                                                        key={i}
-                                                                    >
-                                                                        <Rect
-                                                                            x={
-                                                                                colX
-                                                                            }
-                                                                            y={
-                                                                                row.y
-                                                                            }
-                                                                            width={
-                                                                                colW
-                                                                            }
-                                                                            height={
-                                                                                row.height
-                                                                            }
-                                                                            stroke="rgba(232, 121, 249, 0.3)"
-                                                                            strokeWidth={
-                                                                                1 /
-                                                                                store.zoom
-                                                                            }
-                                                                            listening={
-                                                                                false
-                                                                            }
-                                                                        />
-                                                                        {/* Percentage Label when resizing */}
-                                                                        {isResizingColumn &&
-                                                                            colW >
-                                                                                30 && (
-                                                                                <>
-                                                                                    <Rect
-                                                                                        x={
-                                                                                            colX +
-                                                                                            colW /
-                                                                                                2 -
-                                                                                            18 /
-                                                                                                store.zoom
-                                                                                        }
-                                                                                        y={
-                                                                                            row.y +
-                                                                                            row.height -
-                                                                                            24 /
-                                                                                                store.zoom
-                                                                                        }
-                                                                                        width={
-                                                                                            36 /
-                                                                                            store.zoom
-                                                                                        }
-                                                                                        height={
-                                                                                            18 /
-                                                                                            store.zoom
-                                                                                        }
-                                                                                        fill={
-                                                                                            COLUMN_GUIDE_COLOR
-                                                                                        }
-                                                                                        cornerRadius={
-                                                                                            4 /
-                                                                                            store.zoom
-                                                                                        }
-                                                                                        listening={
-                                                                                            false
-                                                                                        }
-                                                                                    />
-                                                                                    <Text
-                                                                                        x={
-                                                                                            colX +
-                                                                                            colW /
-                                                                                                2
-                                                                                        }
-                                                                                        y={
-                                                                                            row.y +
-                                                                                            row.height -
-                                                                                            24 /
-                                                                                                store.zoom +
-                                                                                            9 /
-                                                                                                store.zoom
-                                                                                        }
-                                                                                        text={`${Math.round(
-                                                                                            pct
-                                                                                        )}%`}
-                                                                                        fontSize={
-                                                                                            10 /
-                                                                                            store.zoom
-                                                                                        }
-                                                                                        fill="white"
-                                                                                        align="center"
-                                                                                        verticalAlign="middle"
-                                                                                        listening={
-                                                                                            false
-                                                                                        }
-                                                                                    />
-                                                                                </>
-                                                                            )}
-                                                                        {i <
-                                                                            row
-                                                                                .layout
-                                                                                .length -
-                                                                                1 && (
+                                                            }
+                                                            const colW = (CANVAS_WIDTH * pct) / 100;
+                                                            const dividerX = colX + colW;
+                                                            return (
+                                                                <React.Fragment key={i}>
+                                                                    <Rect
+                                                                        x={colX}
+                                                                        y={row.y}
+                                                                        width={colW}
+                                                                        height={row.height}
+                                                                        stroke="rgba(232, 121, 249, 0.3)"
+                                                                        strokeWidth={1 / store.zoom}
+                                                                        listening={false}
+                                                                    />
+                                                                    {/* Percentage Label when resizing */}
+                                                                    {isResizingColumn &&
+                                                                        colW > 30 && (
                                                                             <>
-                                                                                <Line
-                                                                                    points={[
-                                                                                        dividerX,
-                                                                                        row.y,
-                                                                                        dividerX,
+                                                                                <Rect
+                                                                                    x={
+                                                                                        colX +
+                                                                                        colW / 2 -
+                                                                                        18 /
+                                                                                            store.zoom
+                                                                                    }
+                                                                                    y={
                                                                                         row.y +
-                                                                                            row.height,
-                                                                                    ]}
-                                                                                    stroke={
+                                                                                        row.height -
+                                                                                        24 /
+                                                                                            store.zoom
+                                                                                    }
+                                                                                    width={
+                                                                                        36 /
+                                                                                        store.zoom
+                                                                                    }
+                                                                                    height={
+                                                                                        18 /
+                                                                                        store.zoom
+                                                                                    }
+                                                                                    fill={
                                                                                         COLUMN_GUIDE_COLOR
                                                                                     }
-                                                                                    strokeWidth={
-                                                                                        1 /
+                                                                                    cornerRadius={
+                                                                                        4 /
                                                                                         store.zoom
                                                                                     }
                                                                                     listening={
                                                                                         false
                                                                                     }
                                                                                 />
-                                                                                {/* Column Resize Handle */}
-                                                                                <ColumnResizeHandle
-                                                                                    row={
-                                                                                        row
+                                                                                <Text
+                                                                                    x={
+                                                                                        colX +
+                                                                                        colW / 2
                                                                                     }
-                                                                                    dividerIndex={
-                                                                                        i
+                                                                                    y={
+                                                                                        row.y +
+                                                                                        row.height -
+                                                                                        24 /
+                                                                                            store.zoom +
+                                                                                        9 /
+                                                                                            store.zoom
                                                                                     }
-                                                                                    dividerX={
-                                                                                        dividerX
+                                                                                    text={`${Math.round(
+                                                                                        pct
+                                                                                    )}%`}
+                                                                                    fontSize={
+                                                                                        10 /
+                                                                                        store.zoom
                                                                                     }
-                                                                                    store={
-                                                                                        store
-                                                                                    }
-                                                                                    onResizeStart={() =>
-                                                                                        setIsResizingColumn(
-                                                                                            true
-                                                                                        )
-                                                                                    }
-                                                                                    onResizeEnd={() =>
-                                                                                        setIsResizingColumn(
-                                                                                            false
-                                                                                        )
+                                                                                    fill="white"
+                                                                                    align="center"
+                                                                                    verticalAlign="middle"
+                                                                                    listening={
+                                                                                        false
                                                                                     }
                                                                                 />
                                                                             </>
                                                                         )}
-                                                                    </React.Fragment>
-                                                                );
-                                                            }
-                                                        )}
+                                                                    {i < row.layout.length - 1 && (
+                                                                        <>
+                                                                            <Line
+                                                                                points={[
+                                                                                    dividerX,
+                                                                                    row.y,
+                                                                                    dividerX,
+                                                                                    row.y +
+                                                                                        row.height,
+                                                                                ]}
+                                                                                stroke={
+                                                                                    COLUMN_GUIDE_COLOR
+                                                                                }
+                                                                                strokeWidth={
+                                                                                    1 / store.zoom
+                                                                                }
+                                                                                listening={false}
+                                                                            />
+                                                                            {/* Column Resize Handle */}
+                                                                            <ColumnResizeHandle
+                                                                                row={row}
+                                                                                dividerIndex={i}
+                                                                                dividerX={dividerX}
+                                                                                store={store}
+                                                                                onResizeStart={() =>
+                                                                                    setIsResizingColumn(
+                                                                                        true
+                                                                                    )
+                                                                                }
+                                                                                onResizeEnd={() =>
+                                                                                    setIsResizingColumn(
+                                                                                        false
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                        </>
+                                                                    )}
+                                                                </React.Fragment>
+                                                            );
+                                                        })}
                                                     </>
                                                 )}
 
                                                 {/* Elements */}
                                                 {row.elements.map((el) => {
                                                     const isSelected =
-                                                        store.selectedElementId ===
-                                                        el.id;
+                                                        store.selectedElementId === el.id;
                                                     const isHovered =
-                                                        store.hoveredElementId ===
-                                                        el.id;
+                                                        store.hoveredElementId === el.id;
 
                                                     if (el.type === 'rect') {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#6366f1',
-                                                                el.width
-                                                            );
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#6366f1',
+                                                            el.width
+                                                        );
                                                         return (
                                                             <Group key={el.id}>
                                                                 <Rect
                                                                     x={el.x}
-                                                                    y={
-                                                                        row.y +
-                                                                        el.y
-                                                                    }
-                                                                    width={
-                                                                        el.width
-                                                                    }
-                                                                    height={
-                                                                        el.height
-                                                                    }
+                                                                    y={row.y + el.y}
+                                                                    width={el.width}
+                                                                    height={el.height}
                                                                     {...fillProps}
-                                                                    cornerRadius={
-                                                                        4
-                                                                    }
+                                                                    cornerRadius={4}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
                                                                     draggable
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.cancelBubble =
-                                                                            true;
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
                                                                         store.selectElement(
                                                                             row.id,
                                                                             el.id
                                                                         );
                                                                     }}
-                                                                    onDragMove={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragMove={(e) => {
                                                                         const newY =
-                                                                            e.target.y() -
-                                                                            row.y;
+                                                                            e.target.y() - row.y;
                                                                         // Auto-resize row if element is dragged to bottom - use temp height for smooth resizing
                                                                         const currentMaxBottom =
                                                                             row.elements.reduce(
-                                                                                (
-                                                                                    max,
-                                                                                    elem
-                                                                                ) => {
+                                                                                (max, elem) => {
                                                                                     if (
                                                                                         elem.id ===
                                                                                         el.id
@@ -1649,20 +1304,15 @@ const KonvaEditor = observer(() => {
                                                                                 },
                                                                                 0
                                                                             );
-                                                                        const newHeight =
-                                                                            Math.max(
-                                                                                150,
-                                                                                currentMaxBottom +
-                                                                                    40
-                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
+                                                                        );
                                                                         if (
-                                                                            newHeight >
-                                                                            row.height
+                                                                            newHeight > row.height
                                                                         ) {
                                                                             setTempHeights(
-                                                                                (
-                                                                                    prev
-                                                                                ) => {
+                                                                                (prev) => {
                                                                                     const newMap =
                                                                                         new Map(
                                                                                             prev
@@ -1676,12 +1326,9 @@ const KonvaEditor = observer(() => {
                                                                             );
                                                                         }
                                                                     }}
-                                                                    onDragEnd={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragEnd={(e) => {
                                                                         const newY =
-                                                                            e.target.y() -
-                                                                            row.y;
+                                                                            e.target.y() - row.y;
                                                                         store.updateElement(
                                                                             row.id,
                                                                             el.id,
@@ -1691,25 +1338,20 @@ const KonvaEditor = observer(() => {
                                                                             }
                                                                         );
                                                                         // Clear temp height after update
-                                                                        setTimeout(
-                                                                            () => {
-                                                                                setTempHeights(
-                                                                                    (
-                                                                                        prev
-                                                                                    ) => {
-                                                                                        const newMap =
-                                                                                            new Map(
-                                                                                                prev
-                                                                                            );
-                                                                                        newMap.delete(
-                                                                                            row.id
+                                                                        setTimeout(() => {
+                                                                            setTempHeights(
+                                                                                (prev) => {
+                                                                                    const newMap =
+                                                                                        new Map(
+                                                                                            prev
                                                                                         );
-                                                                                        return newMap;
-                                                                                    }
-                                                                                );
-                                                                            },
-                                                                            0
-                                                                        );
+                                                                                    newMap.delete(
+                                                                                        row.id
+                                                                                    );
+                                                                                    return newMap;
+                                                                                }
+                                                                            );
+                                                                        }, 0);
                                                                     }}
                                                                     onMouseEnter={() =>
                                                                         store.setHoveredElement(
@@ -1757,72 +1399,44 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'circle'
-                                                    ) {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#10b981',
-                                                                el.width
-                                                            );
+                                                    } else if (el.type === 'circle') {
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#10b981',
+                                                            el.width
+                                                        );
                                                         return (
                                                             <Group key={el.id}>
                                                                 <Circle
-                                                                    x={
-                                                                        el.x +
-                                                                        el.width /
-                                                                            2
-                                                                    }
-                                                                    y={
-                                                                        row.y +
-                                                                        el.y +
-                                                                        el.height /
-                                                                            2
-                                                                    }
-                                                                    radius={
-                                                                        el.width /
-                                                                        2
-                                                                    }
+                                                                    x={el.x + el.width / 2}
+                                                                    y={row.y + el.y + el.height / 2}
+                                                                    radius={el.width / 2}
                                                                     {...fillProps}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
                                                                     draggable
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.cancelBubble =
-                                                                            true;
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
                                                                         store.selectElement(
                                                                             row.id,
                                                                             el.id
                                                                         );
                                                                     }}
-                                                                    onDragMove={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragMove={(e) => {
                                                                         const newY =
                                                                             e.target.y() -
                                                                             row.y -
-                                                                            el.height /
-                                                                                2;
+                                                                            el.height / 2;
                                                                         const currentMaxBottom =
                                                                             row.elements.reduce(
-                                                                                (
-                                                                                    max,
-                                                                                    elem
-                                                                                ) => {
+                                                                                (max, elem) => {
                                                                                     if (
                                                                                         elem.id ===
                                                                                         el.id
@@ -1841,15 +1455,12 @@ const KonvaEditor = observer(() => {
                                                                                 },
                                                                                 0
                                                                             );
-                                                                        const newHeight =
-                                                                            Math.max(
-                                                                                150,
-                                                                                currentMaxBottom +
-                                                                                    40
-                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
+                                                                        );
                                                                         if (
-                                                                            newHeight >
-                                                                            row.height
+                                                                            newHeight > row.height
                                                                         ) {
                                                                             store.updateRowHeight(
                                                                                 row.id,
@@ -1857,22 +1468,18 @@ const KonvaEditor = observer(() => {
                                                                             );
                                                                         }
                                                                     }}
-                                                                    onDragEnd={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragEnd={(e) => {
                                                                         store.updateElement(
                                                                             row.id,
                                                                             el.id,
                                                                             {
                                                                                 x:
                                                                                     e.target.x() -
-                                                                                    el.width /
-                                                                                        2,
+                                                                                    el.width / 2,
                                                                                 y:
                                                                                     e.target.y() -
                                                                                     row.y -
-                                                                                    el.height /
-                                                                                        2,
+                                                                                    el.height / 2,
                                                                             }
                                                                         );
                                                                     }}
@@ -1922,61 +1529,39 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'text'
-                                                    ) {
+                                                    } else if (el.type === 'text') {
                                                         return (
                                                             <Group key={el.id}>
                                                                 <Text
                                                                     x={el.x}
-                                                                    y={
-                                                                        row.y +
-                                                                        el.y
-                                                                    }
-                                                                    text={
-                                                                        el.text ||
-                                                                        'Heading Text'
-                                                                    }
-                                                                    fontSize={
-                                                                        16
-                                                                    }
+                                                                    y={row.y + el.y}
+                                                                    text={el.text || 'Heading Text'}
+                                                                    fontSize={16}
                                                                     fill="black"
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
                                                                     draggable
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.cancelBubble =
-                                                                            true;
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
                                                                         store.selectElement(
                                                                             row.id,
                                                                             el.id
                                                                         );
                                                                     }}
-                                                                    onDragMove={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragMove={(e) => {
                                                                         const newY =
-                                                                            e.target.y() -
-                                                                            row.y;
+                                                                            e.target.y() - row.y;
                                                                         const currentMaxBottom =
                                                                             row.elements.reduce(
-                                                                                (
-                                                                                    max,
-                                                                                    elem
-                                                                                ) => {
+                                                                                (max, elem) => {
                                                                                     if (
                                                                                         elem.id ===
                                                                                         el.id
@@ -1995,15 +1580,12 @@ const KonvaEditor = observer(() => {
                                                                                 },
                                                                                 0
                                                                             );
-                                                                        const newHeight =
-                                                                            Math.max(
-                                                                                150,
-                                                                                currentMaxBottom +
-                                                                                    40
-                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
+                                                                        );
                                                                         if (
-                                                                            newHeight >
-                                                                            row.height
+                                                                            newHeight > row.height
                                                                         ) {
                                                                             store.updateRowHeight(
                                                                                 row.id,
@@ -2011,9 +1593,7 @@ const KonvaEditor = observer(() => {
                                                                             );
                                                                         }
                                                                     }}
-                                                                    onDragEnd={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragEnd={(e) => {
                                                                         store.updateElement(
                                                                             row.id,
                                                                             el.id,
@@ -2071,69 +1651,44 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'button'
-                                                    ) {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#3b82f6',
-                                                                el.width
-                                                            );
+                                                    } else if (el.type === 'button') {
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#3b82f6',
+                                                            el.width
+                                                        );
                                                         return (
                                                             <Group key={el.id}>
                                                                 <Rect
                                                                     x={el.x}
-                                                                    y={
-                                                                        row.y +
-                                                                        el.y
-                                                                    }
-                                                                    width={
-                                                                        el.width
-                                                                    }
-                                                                    height={
-                                                                        el.height
-                                                                    }
+                                                                    y={row.y + el.y}
+                                                                    width={el.width}
+                                                                    height={el.height}
                                                                     {...fillProps}
-                                                                    cornerRadius={
-                                                                        6
-                                                                    }
+                                                                    cornerRadius={6}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
                                                                     draggable
-                                                                    onClick={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.cancelBubble =
-                                                                            true;
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
                                                                         store.selectElement(
                                                                             row.id,
                                                                             el.id
                                                                         );
                                                                     }}
-                                                                    onDragMove={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragMove={(e) => {
                                                                         const newY =
-                                                                            e.target.y() -
-                                                                            row.y;
+                                                                            e.target.y() - row.y;
                                                                         const currentMaxBottom =
                                                                             row.elements.reduce(
-                                                                                (
-                                                                                    max,
-                                                                                    elem
-                                                                                ) => {
+                                                                                (max, elem) => {
                                                                                     if (
                                                                                         elem.id ===
                                                                                         el.id
@@ -2152,15 +1707,12 @@ const KonvaEditor = observer(() => {
                                                                                 },
                                                                                 0
                                                                             );
-                                                                        const newHeight =
-                                                                            Math.max(
-                                                                                150,
-                                                                                currentMaxBottom +
-                                                                                    40
-                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
+                                                                        );
                                                                         if (
-                                                                            newHeight >
-                                                                            row.height
+                                                                            newHeight > row.height
                                                                         ) {
                                                                             store.updateRowHeight(
                                                                                 row.id,
@@ -2168,12 +1720,9 @@ const KonvaEditor = observer(() => {
                                                                             );
                                                                         }
                                                                     }}
-                                                                    onDragEnd={(
-                                                                        e
-                                                                    ) => {
+                                                                    onDragEnd={(e) => {
                                                                         const newY =
-                                                                            e.target.y() -
-                                                                            row.y;
+                                                                            e.target.y() - row.y;
                                                                         store.updateElement(
                                                                             row.id,
                                                                             el.id,
@@ -2183,25 +1732,20 @@ const KonvaEditor = observer(() => {
                                                                             }
                                                                         );
                                                                         // Clear temp height after update
-                                                                        setTimeout(
-                                                                            () => {
-                                                                                setTempHeights(
-                                                                                    (
-                                                                                        prev
-                                                                                    ) => {
-                                                                                        const newMap =
-                                                                                            new Map(
-                                                                                                prev
-                                                                                            );
-                                                                                        newMap.delete(
-                                                                                            row.id
+                                                                        setTimeout(() => {
+                                                                            setTempHeights(
+                                                                                (prev) => {
+                                                                                    const newMap =
+                                                                                        new Map(
+                                                                                            prev
                                                                                         );
-                                                                                        return newMap;
-                                                                                    }
-                                                                                );
-                                                                            },
-                                                                            0
-                                                                        );
+                                                                                    newMap.delete(
+                                                                                        row.id
+                                                                                    );
+                                                                                    return newMap;
+                                                                                }
+                                                                            );
+                                                                        }, 0);
                                                                     }}
                                                                     onMouseEnter={() =>
                                                                         store.setHoveredElement(
@@ -2215,35 +1759,16 @@ const KonvaEditor = observer(() => {
                                                                     }
                                                                 />
                                                                 <Text
-                                                                    x={
-                                                                        el.x +
-                                                                        el.width /
-                                                                            2
-                                                                    }
-                                                                    y={
-                                                                        row.y +
-                                                                        el.y +
-                                                                        el.height /
-                                                                            2
-                                                                    }
-                                                                    text={
-                                                                        el.text ||
-                                                                        'Button'
-                                                                    }
-                                                                    fontSize={
-                                                                        14
-                                                                    }
+                                                                    x={el.x + el.width / 2}
+                                                                    y={row.y + el.y + el.height / 2}
+                                                                    text={el.text || 'Button'}
+                                                                    fontSize={14}
                                                                     fill="white"
                                                                     align="center"
                                                                     verticalAlign="middle"
-                                                                    offsetX={
-                                                                        el.width /
-                                                                        2
-                                                                    }
+                                                                    offsetX={el.width / 2}
                                                                     offsetY={7}
-                                                                    listening={
-                                                                        false
-                                                                    }
+                                                                    listening={false}
                                                                 />
                                                                 {isSelected && (
                                                                     <>
@@ -2280,15 +1805,11 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'triangle'
-                                                    ) {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#f59e0b',
-                                                                el.width
-                                                            );
+                                                    } else if (el.type === 'triangle') {
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#f59e0b',
+                                                            el.width
+                                                        );
                                                         // Triangle: top center, bottom right, bottom left (relative to Group)
                                                         const points = [
                                                             el.width / 2,
@@ -2304,28 +1825,19 @@ const KonvaEditor = observer(() => {
                                                                 x={el.x}
                                                                 y={row.y + el.y}
                                                                 draggable
-                                                                onClick={(
-                                                                    e
-                                                                ) => {
-                                                                    e.cancelBubble =
-                                                                        true;
+                                                                onClick={(e) => {
+                                                                    e.cancelBubble = true;
                                                                     store.selectElement(
                                                                         row.id,
                                                                         el.id
                                                                     );
                                                                 }}
-                                                                onDragMove={(
-                                                                    e
-                                                                ) => {
+                                                                onDragMove={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     const currentMaxBottom =
                                                                         row.elements.reduce(
-                                                                            (
-                                                                                max,
-                                                                                elem
-                                                                            ) => {
+                                                                            (max, elem) => {
                                                                                 if (
                                                                                     elem.id ===
                                                                                     el.id
@@ -2344,28 +1856,20 @@ const KonvaEditor = observer(() => {
                                                                             },
                                                                             0
                                                                         );
-                                                                    const newHeight =
-                                                                        Math.max(
-                                                                            150,
-                                                                            currentMaxBottom +
-                                                                                40
-                                                                        );
-                                                                    if (
-                                                                        newHeight >
-                                                                        row.height
-                                                                    ) {
+                                                                    const newHeight = Math.max(
+                                                                        150,
+                                                                        currentMaxBottom + 40
+                                                                    );
+                                                                    if (newHeight > row.height) {
                                                                         store.updateRowHeight(
                                                                             row.id,
                                                                             newHeight
                                                                         );
                                                                     }
                                                                 }}
-                                                                onDragEnd={(
-                                                                    e
-                                                                ) => {
+                                                                onDragEnd={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     store.updateElement(
                                                                         row.id,
                                                                         el.id,
@@ -2376,40 +1880,27 @@ const KonvaEditor = observer(() => {
                                                                     );
                                                                 }}
                                                                 onMouseEnter={() =>
-                                                                    store.setHoveredElement(
-                                                                        el.id
-                                                                    )
+                                                                    store.setHoveredElement(el.id)
                                                                 }
                                                                 onMouseLeave={() =>
-                                                                    store.setHoveredElement(
-                                                                        null
-                                                                    )
+                                                                    store.setHoveredElement(null)
                                                                 }
                                                             >
                                                                 <Line
-                                                                    points={
-                                                                        points
-                                                                    }
-                                                                    closed={
-                                                                        true
-                                                                    }
+                                                                    points={points}
+                                                                    closed={true}
                                                                     {...fillProps}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
-                                                                    listening={
-                                                                        false
-                                                                    }
+                                                                    listening={false}
                                                                 />
                                                                 {isSelected && (
                                                                     <>
@@ -2446,91 +1937,54 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'star'
-                                                    ) {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#ec4899',
-                                                                el.width
-                                                            );
-                                                        const cx = el.width / 2;
-                                                        const cy =
-                                                            el.height / 2;
-                                                        const spikes = 5;
-                                                        const outerRadius =
-                                                            el.width / 2;
-                                                        const innerRadius =
-                                                            el.width / 4;
-                                                        let rot =
-                                                            (Math.PI / 2) * 3;
-                                                        const step =
-                                                            Math.PI / spikes;
-                                                        const points: number[] =
-                                                            [];
-                                                        points.push(
-                                                            cx,
-                                                            cy - outerRadius
+                                                    } else if (el.type === 'star') {
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#ec4899',
+                                                            el.width
                                                         );
-                                                        for (
-                                                            let i = 0;
-                                                            i < spikes;
-                                                            i++
-                                                        ) {
+                                                        const cx = el.width / 2;
+                                                        const cy = el.height / 2;
+                                                        const spikes = 5;
+                                                        const outerRadius = el.width / 2;
+                                                        const innerRadius = el.width / 4;
+                                                        let rot = (Math.PI / 2) * 3;
+                                                        const step = Math.PI / spikes;
+                                                        const points: number[] = [];
+                                                        points.push(cx, cy - outerRadius);
+                                                        for (let i = 0; i < spikes; i++) {
                                                             const x =
-                                                                cx +
-                                                                Math.cos(rot) *
-                                                                    outerRadius;
+                                                                cx + Math.cos(rot) * outerRadius;
                                                             const y =
-                                                                cy +
-                                                                Math.sin(rot) *
-                                                                    outerRadius;
+                                                                cy + Math.sin(rot) * outerRadius;
                                                             points.push(x, y);
                                                             rot += step;
                                                             const x2 =
-                                                                cx +
-                                                                Math.cos(rot) *
-                                                                    innerRadius;
+                                                                cx + Math.cos(rot) * innerRadius;
                                                             const y2 =
-                                                                cy +
-                                                                Math.sin(rot) *
-                                                                    innerRadius;
+                                                                cy + Math.sin(rot) * innerRadius;
                                                             points.push(x2, y2);
                                                             rot += step;
                                                         }
-                                                        points.push(
-                                                            cx,
-                                                            cy - outerRadius
-                                                        );
+                                                        points.push(cx, cy - outerRadius);
                                                         return (
                                                             <Group
                                                                 key={el.id}
                                                                 x={el.x}
                                                                 y={row.y + el.y}
                                                                 draggable
-                                                                onClick={(
-                                                                    e
-                                                                ) => {
-                                                                    e.cancelBubble =
-                                                                        true;
+                                                                onClick={(e) => {
+                                                                    e.cancelBubble = true;
                                                                     store.selectElement(
                                                                         row.id,
                                                                         el.id
                                                                     );
                                                                 }}
-                                                                onDragMove={(
-                                                                    e
-                                                                ) => {
+                                                                onDragMove={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     const currentMaxBottom =
                                                                         row.elements.reduce(
-                                                                            (
-                                                                                max,
-                                                                                elem
-                                                                            ) => {
+                                                                            (max, elem) => {
                                                                                 if (
                                                                                     elem.id ===
                                                                                     el.id
@@ -2549,28 +2003,20 @@ const KonvaEditor = observer(() => {
                                                                             },
                                                                             0
                                                                         );
-                                                                    const newHeight =
-                                                                        Math.max(
-                                                                            150,
-                                                                            currentMaxBottom +
-                                                                                40
-                                                                        );
-                                                                    if (
-                                                                        newHeight >
-                                                                        row.height
-                                                                    ) {
+                                                                    const newHeight = Math.max(
+                                                                        150,
+                                                                        currentMaxBottom + 40
+                                                                    );
+                                                                    if (newHeight > row.height) {
                                                                         store.updateRowHeight(
                                                                             row.id,
                                                                             newHeight
                                                                         );
                                                                     }
                                                                 }}
-                                                                onDragEnd={(
-                                                                    e
-                                                                ) => {
+                                                                onDragEnd={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     store.updateElement(
                                                                         row.id,
                                                                         el.id,
@@ -2581,40 +2027,27 @@ const KonvaEditor = observer(() => {
                                                                     );
                                                                 }}
                                                                 onMouseEnter={() =>
-                                                                    store.setHoveredElement(
-                                                                        el.id
-                                                                    )
+                                                                    store.setHoveredElement(el.id)
                                                                 }
                                                                 onMouseLeave={() =>
-                                                                    store.setHoveredElement(
-                                                                        null
-                                                                    )
+                                                                    store.setHoveredElement(null)
                                                                 }
                                                             >
                                                                 <Line
-                                                                    points={
-                                                                        points
-                                                                    }
-                                                                    closed={
-                                                                        true
-                                                                    }
+                                                                    points={points}
+                                                                    closed={true}
                                                                     {...fillProps}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
-                                                                    listening={
-                                                                        false
-                                                                    }
+                                                                    listening={false}
                                                                 />
                                                                 {isSelected && (
                                                                     <>
@@ -2651,46 +2084,22 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'polygon'
-                                                    ) {
-                                                        const fillProps =
-                                                            getFillProps(
-                                                                el.fill ||
-                                                                    '#3b82f6',
-                                                                el.width
-                                                            );
-                                                        const centerX =
-                                                            el.width / 2;
-                                                        const centerY =
-                                                            el.height / 2;
+                                                    } else if (el.type === 'polygon') {
+                                                        const fillProps = getFillProps(
+                                                            el.fill || '#3b82f6',
+                                                            el.width
+                                                        );
+                                                        const centerX = el.width / 2;
+                                                        const centerY = el.height / 2;
                                                         const sides = 6;
-                                                        const radius =
-                                                            el.width / 2;
-                                                        const points: number[] =
-                                                            [];
-                                                        for (
-                                                            let i = 0;
-                                                            i <= sides;
-                                                            i++
-                                                        ) {
-                                                            const angle =
-                                                                (i *
-                                                                    2 *
-                                                                    Math.PI) /
-                                                                sides;
+                                                        const radius = el.width / 2;
+                                                        const points: number[] = [];
+                                                        for (let i = 0; i <= sides; i++) {
+                                                            const angle = (i * 2 * Math.PI) / sides;
                                                             const x =
-                                                                centerX +
-                                                                radius *
-                                                                    Math.cos(
-                                                                        angle
-                                                                    );
+                                                                centerX + radius * Math.cos(angle);
                                                             const y =
-                                                                centerY +
-                                                                radius *
-                                                                    Math.sin(
-                                                                        angle
-                                                                    );
+                                                                centerY + radius * Math.sin(angle);
                                                             points.push(x, y);
                                                         }
                                                         return (
@@ -2699,28 +2108,19 @@ const KonvaEditor = observer(() => {
                                                                 x={el.x}
                                                                 y={row.y + el.y}
                                                                 draggable
-                                                                onClick={(
-                                                                    e
-                                                                ) => {
-                                                                    e.cancelBubble =
-                                                                        true;
+                                                                onClick={(e) => {
+                                                                    e.cancelBubble = true;
                                                                     store.selectElement(
                                                                         row.id,
                                                                         el.id
                                                                     );
                                                                 }}
-                                                                onDragMove={(
-                                                                    e
-                                                                ) => {
+                                                                onDragMove={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     const currentMaxBottom =
                                                                         row.elements.reduce(
-                                                                            (
-                                                                                max,
-                                                                                elem
-                                                                            ) => {
+                                                                            (max, elem) => {
                                                                                 if (
                                                                                     elem.id ===
                                                                                     el.id
@@ -2739,28 +2139,20 @@ const KonvaEditor = observer(() => {
                                                                             },
                                                                             0
                                                                         );
-                                                                    const newHeight =
-                                                                        Math.max(
-                                                                            150,
-                                                                            currentMaxBottom +
-                                                                                40
-                                                                        );
-                                                                    if (
-                                                                        newHeight >
-                                                                        row.height
-                                                                    ) {
+                                                                    const newHeight = Math.max(
+                                                                        150,
+                                                                        currentMaxBottom + 40
+                                                                    );
+                                                                    if (newHeight > row.height) {
                                                                         store.updateRowHeight(
                                                                             row.id,
                                                                             newHeight
                                                                         );
                                                                     }
                                                                 }}
-                                                                onDragEnd={(
-                                                                    e
-                                                                ) => {
+                                                                onDragEnd={(e) => {
                                                                     const newY =
-                                                                        e.target.y() -
-                                                                        row.y;
+                                                                        e.target.y() - row.y;
                                                                     store.updateElement(
                                                                         row.id,
                                                                         el.id,
@@ -2771,40 +2163,27 @@ const KonvaEditor = observer(() => {
                                                                     );
                                                                 }}
                                                                 onMouseEnter={() =>
-                                                                    store.setHoveredElement(
-                                                                        el.id
-                                                                    )
+                                                                    store.setHoveredElement(el.id)
                                                                 }
                                                                 onMouseLeave={() =>
-                                                                    store.setHoveredElement(
-                                                                        null
-                                                                    )
+                                                                    store.setHoveredElement(null)
                                                                 }
                                                             >
                                                                 <Line
-                                                                    points={
-                                                                        points
-                                                                    }
-                                                                    closed={
-                                                                        true
-                                                                    }
+                                                                    points={points}
+                                                                    closed={true}
                                                                     {...fillProps}
                                                                     stroke={
-                                                                        isSelected ||
-                                                                        isHovered
+                                                                        isSelected || isHovered
                                                                             ? SELECTION_COLOR
                                                                             : undefined
                                                                     }
                                                                     strokeWidth={
-                                                                        (isSelected ||
-                                                                        isHovered
+                                                                        (isSelected || isHovered
                                                                             ? 1
-                                                                            : 0) /
-                                                                        store.zoom
+                                                                            : 0) / store.zoom
                                                                     }
-                                                                    listening={
-                                                                        false
-                                                                    }
+                                                                    listening={false}
                                                                 />
                                                                 {isSelected && (
                                                                     <>
@@ -2841,61 +2220,39 @@ const KonvaEditor = observer(() => {
                                                                 )}
                                                             </Group>
                                                         );
-                                                    } else if (
-                                                        el.type === 'image' &&
-                                                        el.src
-                                                    ) {
+                                                    } else if (el.type === 'image' && el.src) {
                                                         return (
                                                             <ImageElement
                                                                 key={el.id}
                                                                 el={el}
                                                                 rowY={row.y}
                                                                 rowId={row.id}
-                                                                isSelected={
-                                                                    isSelected
-                                                                }
-                                                                isHovered={
-                                                                    isHovered
-                                                                }
+                                                                isSelected={isSelected}
+                                                                isHovered={isHovered}
                                                                 store={store}
                                                                 onRowHeightChange={(
                                                                     rowId,
                                                                     height
                                                                 ) => {
-                                                                    if (
-                                                                        height >
-                                                                        0
-                                                                    ) {
-                                                                        setTempHeights(
-                                                                            (
+                                                                    if (height > 0) {
+                                                                        setTempHeights((prev) => {
+                                                                            const newMap = new Map(
                                                                                 prev
-                                                                            ) => {
-                                                                                const newMap =
-                                                                                    new Map(
-                                                                                        prev
-                                                                                    );
-                                                                                newMap.set(
-                                                                                    rowId,
-                                                                                    height
-                                                                                );
-                                                                                return newMap;
-                                                                            }
-                                                                        );
+                                                                            );
+                                                                            newMap.set(
+                                                                                rowId,
+                                                                                height
+                                                                            );
+                                                                            return newMap;
+                                                                        });
                                                                     } else {
-                                                                        setTempHeights(
-                                                                            (
+                                                                        setTempHeights((prev) => {
+                                                                            const newMap = new Map(
                                                                                 prev
-                                                                            ) => {
-                                                                                const newMap =
-                                                                                    new Map(
-                                                                                        prev
-                                                                                    );
-                                                                                newMap.delete(
-                                                                                    rowId
-                                                                                );
-                                                                                return newMap;
-                                                                            }
-                                                                        );
+                                                                            );
+                                                                            newMap.delete(rowId);
+                                                                            return newMap;
+                                                                        });
                                                                     }
                                                                 }}
                                                             />
@@ -2945,9 +2302,7 @@ const KonvaEditor = observer(() => {
                                             store.setSelectionColor(c);
                                             setShowColorPicker(false);
                                         }}
-                                        onClose={() =>
-                                            setShowColorPicker(false)
-                                        }
+                                        onClose={() => setShowColorPicker(false)}
                                     />
                                 )}
                             </div>
@@ -2965,10 +2320,7 @@ const KonvaEditor = observer(() => {
                         </div>
                     )}
 
-                    <ZoomControls
-                        zoom={store.zoom}
-                        setZoom={(z) => store.setZoom(z)}
-                    />
+                    <ZoomControls zoom={store.zoom} setZoom={(z) => store.setZoom(z)} />
                 </div>
             </div>
         </div>
