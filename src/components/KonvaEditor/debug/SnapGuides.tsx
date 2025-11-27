@@ -70,6 +70,49 @@ export const SnapGuides: React.FC<SnapGuidesProps> = observer(({
     if (Math.abs(selCenterX - canvasWidth / 2) < snapThreshold) {
         snapLines.push({ type: 'vertical', position: canvasWidth / 2, start: 0, end: canvasHeight });
     }
+    // Vertical 1/3 guides
+    const oneThirdX = canvasWidth / 3;
+    const twoThirdX = (canvasWidth * 2) / 3;
+    if (Math.abs(selLeft - oneThirdX) < snapThreshold || Math.abs(selRight - oneThirdX) < snapThreshold || Math.abs(selCenterX - oneThirdX) < snapThreshold) {
+        snapLines.push({ type: 'vertical', position: oneThirdX, start: 0, end: canvasHeight });
+    }
+    if (Math.abs(selLeft - twoThirdX) < snapThreshold || Math.abs(selRight - twoThirdX) < snapThreshold || Math.abs(selCenterX - twoThirdX) < snapThreshold) {
+        snapLines.push({ type: 'vertical', position: twoThirdX, start: 0, end: canvasHeight });
+    }
+
+    // Horizontal center of canvas
+    if (Math.abs(selCenterY - canvasHeight / 2) < snapThreshold) {
+        snapLines.push({ type: 'horizontal', position: canvasHeight / 2, start: 0, end: canvasWidth });
+    }
+    // Horizontal 1/3 and 2/3 guides
+    const oneThirdY = canvasHeight / 3;
+    const twoThirdY = (canvasHeight * 2) / 3;
+    if (Math.abs(selTop - oneThirdY) < snapThreshold || Math.abs(selBottom - oneThirdY) < snapThreshold || Math.abs(selCenterY - oneThirdY) < snapThreshold) {
+        snapLines.push({ type: 'horizontal', position: oneThirdY, start: 0, end: canvasWidth });
+    }
+    if (Math.abs(selTop - twoThirdY) < snapThreshold || Math.abs(selBottom - twoThirdY) < snapThreshold || Math.abs(selCenterY - twoThirdY) < snapThreshold) {
+        snapLines.push({ type: 'horizontal', position: twoThirdY, start: 0, end: canvasWidth });
+    }
+
+    // Check alignment with row boundaries
+    rows.forEach((row) => {
+        const rowTop = row.y;
+        const rowBottom = row.y + row.height;
+        const rowCenterY = row.y + row.height / 2;
+
+        // Snap to row top
+        if (Math.abs(selTop - rowTop) < snapThreshold || Math.abs(selBottom - rowTop) < snapThreshold) {
+            snapLines.push({ type: 'horizontal', position: rowTop, start: 0, end: canvasWidth });
+        }
+        // Snap to row bottom
+        if (Math.abs(selTop - rowBottom) < snapThreshold || Math.abs(selBottom - rowBottom) < snapThreshold) {
+            snapLines.push({ type: 'horizontal', position: rowBottom, start: 0, end: canvasWidth });
+        }
+        // Snap to row center
+        if (Math.abs(selCenterY - rowCenterY) < snapThreshold) {
+            snapLines.push({ type: 'horizontal', position: rowCenterY, start: 0, end: canvasWidth });
+        }
+    });
 
     // Check alignment with other elements
     rows.forEach((row) => {

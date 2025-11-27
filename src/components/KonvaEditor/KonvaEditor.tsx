@@ -268,29 +268,38 @@ const ElementResizeHandle = observer(
         rowId,
         handle,
         store,
+        relativeToGroup = false,
     }: {
         el: EditorElement;
         rowY: number;
         rowId: string;
         handle: 'tl' | 'tr' | 'bl' | 'br';
         store: EditorStore;
+        relativeToGroup?: boolean;
     }) => {
-        const initialXRef = useRef<number>(el.x);
-        const initialYRef = useRef<number>(el.y);
-        const initialWRef = useRef<number>(el.width);
-        const initialHRef = useRef<number>(el.height);
-        const isDraggingRef = useRef(false);
-
-        useEffect(() => {
-            if (!isDraggingRef.current) {
-                initialXRef.current = el.x;
-                initialYRef.current = el.y;
-                initialWRef.current = el.width;
-                initialHRef.current = el.height;
-            }
-        }, [el.x, el.y, el.width, el.height]);
+        const startPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+        const startElRef = useRef<{ x: number; y: number; w: number; h: number }>({
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        });
 
         const getHandlePosition = () => {
+            // If inside a positioned Group, use relative coordinates (0 to width/height)
+            if (relativeToGroup) {
+                switch (handle) {
+                    case 'tl':
+                        return { x: 0, y: 0 };
+                    case 'tr':
+                        return { x: el.width, y: 0 };
+                    case 'bl':
+                        return { x: 0, y: el.height };
+                    case 'br':
+                        return { x: el.width, y: el.height };
+                }
+            }
+            // Otherwise use absolute coordinates
             switch (handle) {
                 case 'tl':
                     return { x: el.x, y: rowY + el.y };
@@ -303,40 +312,42 @@ const ElementResizeHandle = observer(
             }
         };
 
-        const handleDragStart = () => {
-            isDraggingRef.current = true;
-            initialXRef.current = el.x;
-            initialYRef.current = el.y;
-            initialWRef.current = el.width;
-            initialHRef.current = el.height;
+        const handleDragStart = (e: any) => {
+            // Store starting positions
+            startPosRef.current = { x: e.target.x(), y: e.target.y() };
+            startElRef.current = { x: el.x, y: el.y, w: el.width, h: el.height };
         };
 
         const handleDragMove = (e: any) => {
-            const handlePos = getHandlePosition();
-            const deltaX = (e.target.x() - handlePos.x) / store.zoom;
-            const deltaY = (e.target.y() - handlePos.y) / store.zoom;
+            // Calculate delta from start position (in logical coordinates)
+            const deltaX = e.target.x() - startPosRef.current.x;
+            const deltaY = e.target.y() - startPosRef.current.y;
 
-            let newX = initialXRef.current;
-            let newY = initialYRef.current;
-            let newW = initialWRef.current;
-            let newH = initialHRef.current;
+            let newX = startElRef.current.x;
+            let newY = startElRef.current.y;
+            let newW = startElRef.current.w;
+            let newH = startElRef.current.h;
 
             if (handle === 'br') {
-                newW = Math.max(20, initialWRef.current + deltaX);
-                newH = Math.max(20, initialHRef.current + deltaY);
+                newW = Math.max(20, startElRef.current.w + deltaX);
+                newH = Math.max(20, startElRef.current.h + deltaY);
             } else if (handle === 'bl') {
-                newW = Math.max(20, initialWRef.current - deltaX);
-                newH = Math.max(20, initialHRef.current + deltaY);
-                newX = initialXRef.current + (initialWRef.current - newW);
+                const dw = startElRef.current.w - deltaX;
+                newW = Math.max(20, dw);
+                newH = Math.max(20, startElRef.current.h + deltaY);
+                newX = startElRef.current.x + startElRef.current.w - newW;
             } else if (handle === 'tr') {
-                newW = Math.max(20, initialWRef.current + deltaX);
-                newH = Math.max(20, initialHRef.current - deltaY);
-                newY = initialYRef.current + (initialHRef.current - newH);
+                newW = Math.max(20, startElRef.current.w + deltaX);
+                const dh = startElRef.current.h - deltaY;
+                newH = Math.max(20, dh);
+                newY = startElRef.current.y + startElRef.current.h - newH;
             } else if (handle === 'tl') {
-                newW = Math.max(20, initialWRef.current - deltaX);
-                newH = Math.max(20, initialHRef.current - deltaY);
-                newX = initialXRef.current + (initialWRef.current - newW);
-                newY = initialYRef.current + (initialHRef.current - newH);
+                const dw = startElRef.current.w - deltaX;
+                const dh = startElRef.current.h - deltaY;
+                newW = Math.max(20, dw);
+                newH = Math.max(20, dh);
+                newX = startElRef.current.x + startElRef.current.w - newW;
+                newY = startElRef.current.y + startElRef.current.h - newH;
             }
 
             store.updateElement(rowId, el.id, {
@@ -345,10 +356,6 @@ const ElementResizeHandle = observer(
                 width: newW,
                 height: newH,
             });
-        };
-
-        const handleDragEnd = () => {
-            isDraggingRef.current = false;
         };
 
         const handlePos = getHandlePosition();
@@ -364,7 +371,7 @@ const ElementResizeHandle = observer(
                 draggable
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
-                onDragEnd={handleDragEnd}
+                dragBoundFunc={(pos) => pos}
             />
         );
     }
@@ -1426,6 +1433,8 @@ const KonvaEditor = observer(() => {
                                                                         );
 
                                                                         // Auto-resize row if element is dragged to bottom
+                                                                        // Use current displayed height (temp or original)
+                                                                        const currentRowHeight = getRowHeight(row.id, row.height);
                                                                         const currentMaxBottom = row.elements.reduce(
                                                                             (max, elem) => {
                                                                                 if (elem.id === el.id) {
@@ -1436,7 +1445,8 @@ const KonvaEditor = observer(() => {
                                                                             0
                                                                         );
                                                                         const newHeight = Math.max(150, currentMaxBottom + 40);
-                                                                        if (newHeight > row.height) {
+                                                                        // Update temp height if new height differs from current
+                                                                        if (newHeight !== currentRowHeight) {
                                                                             setTempHeights((prev) => {
                                                                                 const newMap = new Map(prev);
                                                                                 newMap.set(row.id, newHeight);
@@ -1563,6 +1573,8 @@ const KonvaEditor = observer(() => {
                                                                         );
 
                                                                         // Auto-expand row if needed
+                                                                        // Use current displayed height (temp or original)
+                                                                        const currentRowHeight = getRowHeight(row.id, row.height);
                                                                         const currentMaxBottom = row.elements.reduce(
                                                                             (max, elem) => {
                                                                                 if (elem.id === el.id) {
@@ -1573,8 +1585,13 @@ const KonvaEditor = observer(() => {
                                                                             0
                                                                         );
                                                                         const newHeight = Math.max(150, currentMaxBottom + 40);
-                                                                        if (newHeight > row.height) {
-                                                                            store.updateRowHeight(row.id, newHeight);
+                                                                        // Update temp height if new height differs from current
+                                                                        if (newHeight !== currentRowHeight) {
+                                                                            setTempHeights((prev) => {
+                                                                                const newMap = new Map(prev);
+                                                                                newMap.set(row.id, newHeight);
+                                                                                return newMap;
+                                                                            });
                                                                         }
                                                                     }}
                                                                     onDragEnd={(e) => {
@@ -1594,8 +1611,15 @@ const KonvaEditor = observer(() => {
                                                                             y: snapped.y,
                                                                         });
 
-                                                                        // Clear guides after drag ends
+                                                                        // Clear guides and temp height after drag ends
                                                                         clearSnapGuides();
+                                                                        setTimeout(() => {
+                                                                            setTempHeights((prev) => {
+                                                                                const newMap = new Map(prev);
+                                                                                newMap.delete(row.id);
+                                                                                return newMap;
+                                                                            });
+                                                                        }, 0);
                                                                     }}
                                                                     onMouseEnter={() =>
                                                                         store.setHoveredElement(
@@ -1934,91 +1958,101 @@ const KonvaEditor = observer(() => {
                                                             el.height, // bottom left
                                                         ];
                                                         return (
-                                                            <Group
-                                                                key={el.id}
-                                                                x={el.x}
-                                                                y={row.y + el.y}
-                                                                draggable
-                                                                onClick={(e) => {
-                                                                    e.cancelBubble = true;
-                                                                    store.selectElement(
-                                                                        row.id,
-                                                                        el.id
-                                                                    );
-                                                                }}
-                                                                onDragMove={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    const currentMaxBottom =
-                                                                        row.elements.reduce(
-                                                                            (max, elem) => {
-                                                                                if (
-                                                                                    elem.id ===
-                                                                                    el.id
-                                                                                ) {
+                                                            <Group key={el.id}>
+                                                                {/* Shape group - positioned and draggable */}
+                                                                <Group
+                                                                    x={el.x}
+                                                                    y={row.y + el.y}
+                                                                    draggable
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
+                                                                        store.selectElement(
+                                                                            row.id,
+                                                                            el.id
+                                                                        );
+                                                                    }}
+                                                                    onDragMove={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        const currentMaxBottom =
+                                                                            row.elements.reduce(
+                                                                                (max, elem) => {
+                                                                                    if (
+                                                                                        elem.id ===
+                                                                                        el.id
+                                                                                    ) {
+                                                                                        return Math.max(
+                                                                                            max,
+                                                                                            newY +
+                                                                                                elem.height
+                                                                                        );
+                                                                                    }
                                                                                     return Math.max(
                                                                                         max,
-                                                                                        newY +
+                                                                                        elem.y +
                                                                                             elem.height
                                                                                     );
-                                                                                }
-                                                                                return Math.max(
-                                                                                    max,
-                                                                                    elem.y +
-                                                                                        elem.height
-                                                                                );
-                                                                            },
-                                                                            0
+                                                                                },
+                                                                                0
+                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
                                                                         );
-                                                                    const newHeight = Math.max(
-                                                                        150,
-                                                                        currentMaxBottom + 40
-                                                                    );
-                                                                    if (newHeight > row.height) {
-                                                                        store.updateRowHeight(
-                                                                            row.id,
-                                                                            newHeight
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                onDragEnd={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    store.updateElement(
-                                                                        row.id,
-                                                                        el.id,
-                                                                        {
-                                                                            x: e.target.x(),
-                                                                            y: newY,
+                                                                        if (newHeight > row.height) {
+                                                                            store.updateRowHeight(
+                                                                                row.id,
+                                                                                newHeight
+                                                                            );
                                                                         }
-                                                                    );
-                                                                }}
-                                                                onMouseEnter={() =>
-                                                                    store.setHoveredElement(el.id)
-                                                                }
-                                                                onMouseLeave={() =>
-                                                                    store.setHoveredElement(null)
-                                                                }
-                                                            >
-                                                                <Line
-                                                                    points={points}
-                                                                    closed={true}
-                                                                    {...fillProps}
-                                                                    stroke={
-                                                                        isSelected || isHovered
-                                                                            ? SELECTION_COLOR
-                                                                            : undefined
+                                                                    }}
+                                                                    onDragEnd={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        store.updateElement(
+                                                                            row.id,
+                                                                            el.id,
+                                                                            {
+                                                                                x: e.target.x(),
+                                                                                y: newY,
+                                                                            }
+                                                                        );
+                                                                    }}
+                                                                    onMouseEnter={() =>
+                                                                        store.setHoveredElement(el.id)
                                                                     }
-                                                                    strokeWidth={
-                                                                        (isSelected || isHovered
-                                                                            ? 1
-                                                                            : 0) / store.zoom
+                                                                    onMouseLeave={() =>
+                                                                        store.setHoveredElement(null)
                                                                     }
-                                                                    listening={false}
-                                                                />
+                                                                >
+                                                                    {/* Transparent hit area for click/drag detection */}
+                                                                    <Rect
+                                                                        x={0}
+                                                                        y={0}
+                                                                        width={el.width}
+                                                                        height={el.height}
+                                                                        fill="transparent"
+                                                                    />
+                                                                    <Line
+                                                                        points={points}
+                                                                        closed={true}
+                                                                        {...fillProps}
+                                                                        stroke={
+                                                                            isSelected || isHovered
+                                                                                ? SELECTION_COLOR
+                                                                                : undefined
+                                                                        }
+                                                                        strokeWidth={
+                                                                            (isSelected || isHovered
+                                                                                ? 1
+                                                                                : 0) / store.zoom
+                                                                        }
+                                                                        listening={false}
+                                                                    />
+                                                                </Group>
+                                                                {/* Resize handles - outside positioned group, use absolute coords */}
                                                                 {isSelected && (
                                                                     <>
-                                                                        {/* Interactive Resize handles */}
                                                                         <ElementResizeHandle
                                                                             el={el}
                                                                             rowY={row.y}
@@ -2081,81 +2115,90 @@ const KonvaEditor = observer(() => {
                                                         }
                                                         points.push(cx, cy - outerRadius);
                                                         return (
-                                                            <Group
-                                                                key={el.id}
-                                                                x={el.x}
-                                                                y={row.y + el.y}
-                                                                draggable
-                                                                onClick={(e) => {
-                                                                    e.cancelBubble = true;
-                                                                    store.selectElement(
-                                                                        row.id,
-                                                                        el.id
-                                                                    );
-                                                                }}
-                                                                onDragMove={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    const currentMaxBottom =
-                                                                        row.elements.reduce(
-                                                                            (max, elem) => {
-                                                                                if (
-                                                                                    elem.id ===
-                                                                                    el.id
-                                                                                ) {
+                                                            <Group key={el.id}>
+                                                                {/* Shape group - positioned and draggable */}
+                                                                <Group
+                                                                    x={el.x}
+                                                                    y={row.y + el.y}
+                                                                    draggable
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
+                                                                        store.selectElement(
+                                                                            row.id,
+                                                                            el.id
+                                                                        );
+                                                                    }}
+                                                                    onDragMove={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        const currentMaxBottom =
+                                                                            row.elements.reduce(
+                                                                                (max, elem) => {
+                                                                                    if (
+                                                                                        elem.id ===
+                                                                                        el.id
+                                                                                    ) {
+                                                                                        return Math.max(
+                                                                                            max,
+                                                                                            newY +
+                                                                                                elem.height
+                                                                                        );
+                                                                                    }
                                                                                     return Math.max(
                                                                                         max,
-                                                                                        newY +
+                                                                                        elem.y +
                                                                                             elem.height
                                                                                     );
-                                                                                }
-                                                                                return Math.max(
-                                                                                    max,
-                                                                                    elem.y +
-                                                                                        elem.height
-                                                                                );
-                                                                            },
-                                                                            0
+                                                                                },
+                                                                                0
+                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
                                                                         );
-                                                                    const newHeight = Math.max(
-                                                                        150,
-                                                                        currentMaxBottom + 40
-                                                                    );
-                                                                    if (newHeight > row.height) {
-                                                                        store.updateRowHeight(
-                                                                            row.id,
-                                                                            newHeight
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                onDragEnd={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    store.updateElement(
-                                                                        row.id,
-                                                                        el.id,
-                                                                        {
-                                                                            x: e.target.x(),
-                                                                            y: newY,
+                                                                        if (newHeight > row.height) {
+                                                                            store.updateRowHeight(
+                                                                                row.id,
+                                                                                newHeight
+                                                                            );
                                                                         }
-                                                                    );
-                                                                }}
-                                                                onMouseEnter={() =>
-                                                                    store.setHoveredElement(el.id)
-                                                                }
-                                                                onMouseLeave={() =>
-                                                                    store.setHoveredElement(null)
-                                                                }
-                                                            >
-                                                                <Line
-                                                                    points={points}
-                                                                    closed={true}
-                                                                    {...fillProps}
-                                                                    stroke={
-                                                                        isSelected || isHovered
-                                                                            ? SELECTION_COLOR
-                                                                            : undefined
+                                                                    }}
+                                                                    onDragEnd={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        store.updateElement(
+                                                                            row.id,
+                                                                            el.id,
+                                                                            {
+                                                                                x: e.target.x(),
+                                                                                y: newY,
+                                                                            }
+                                                                        );
+                                                                    }}
+                                                                    onMouseEnter={() =>
+                                                                        store.setHoveredElement(el.id)
                                                                     }
+                                                                    onMouseLeave={() =>
+                                                                        store.setHoveredElement(null)
+                                                                    }
+                                                                >
+                                                                    {/* Transparent hit area for click/drag detection */}
+                                                                    <Rect
+                                                                        x={0}
+                                                                        y={0}
+                                                                        width={el.width}
+                                                                        height={el.height}
+                                                                        fill="transparent"
+                                                                    />
+                                                                    <Line
+                                                                        points={points}
+                                                                        closed={true}
+                                                                        {...fillProps}
+                                                                        stroke={
+                                                                            isSelected || isHovered
+                                                                                ? SELECTION_COLOR
+                                                                                : undefined
+                                                                        }
                                                                     strokeWidth={
                                                                         (isSelected || isHovered
                                                                             ? 1
@@ -2163,9 +2206,10 @@ const KonvaEditor = observer(() => {
                                                                     }
                                                                     listening={false}
                                                                 />
+                                                                </Group>
+                                                                {/* Resize handles - outside positioned group, use absolute coords */}
                                                                 {isSelected && (
                                                                     <>
-                                                                        {/* Interactive Resize handles */}
                                                                         <ElementResizeHandle
                                                                             el={el}
                                                                             rowY={row.y}
@@ -2217,91 +2261,101 @@ const KonvaEditor = observer(() => {
                                                             points.push(x, y);
                                                         }
                                                         return (
-                                                            <Group
-                                                                key={el.id}
-                                                                x={el.x}
-                                                                y={row.y + el.y}
-                                                                draggable
-                                                                onClick={(e) => {
-                                                                    e.cancelBubble = true;
-                                                                    store.selectElement(
-                                                                        row.id,
-                                                                        el.id
-                                                                    );
-                                                                }}
-                                                                onDragMove={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    const currentMaxBottom =
-                                                                        row.elements.reduce(
-                                                                            (max, elem) => {
-                                                                                if (
-                                                                                    elem.id ===
-                                                                                    el.id
-                                                                                ) {
+                                                            <Group key={el.id}>
+                                                                {/* Shape group - positioned and draggable */}
+                                                                <Group
+                                                                    x={el.x}
+                                                                    y={row.y + el.y}
+                                                                    draggable
+                                                                    onClick={(e) => {
+                                                                        e.cancelBubble = true;
+                                                                        store.selectElement(
+                                                                            row.id,
+                                                                            el.id
+                                                                        );
+                                                                    }}
+                                                                    onDragMove={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        const currentMaxBottom =
+                                                                            row.elements.reduce(
+                                                                                (max, elem) => {
+                                                                                    if (
+                                                                                        elem.id ===
+                                                                                        el.id
+                                                                                    ) {
+                                                                                        return Math.max(
+                                                                                            max,
+                                                                                            newY +
+                                                                                                elem.height
+                                                                                        );
+                                                                                    }
                                                                                     return Math.max(
                                                                                         max,
-                                                                                        newY +
+                                                                                        elem.y +
                                                                                             elem.height
                                                                                     );
-                                                                                }
-                                                                                return Math.max(
-                                                                                    max,
-                                                                                    elem.y +
-                                                                                        elem.height
-                                                                                );
-                                                                            },
-                                                                            0
+                                                                                },
+                                                                                0
+                                                                            );
+                                                                        const newHeight = Math.max(
+                                                                            150,
+                                                                            currentMaxBottom + 40
                                                                         );
-                                                                    const newHeight = Math.max(
-                                                                        150,
-                                                                        currentMaxBottom + 40
-                                                                    );
-                                                                    if (newHeight > row.height) {
-                                                                        store.updateRowHeight(
-                                                                            row.id,
-                                                                            newHeight
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                onDragEnd={(e) => {
-                                                                    const newY =
-                                                                        e.target.y() - row.y;
-                                                                    store.updateElement(
-                                                                        row.id,
-                                                                        el.id,
-                                                                        {
-                                                                            x: e.target.x(),
-                                                                            y: newY,
+                                                                        if (newHeight > row.height) {
+                                                                            store.updateRowHeight(
+                                                                                row.id,
+                                                                                newHeight
+                                                                            );
                                                                         }
-                                                                    );
-                                                                }}
-                                                                onMouseEnter={() =>
-                                                                    store.setHoveredElement(el.id)
-                                                                }
-                                                                onMouseLeave={() =>
-                                                                    store.setHoveredElement(null)
-                                                                }
-                                                            >
-                                                                <Line
-                                                                    points={points}
-                                                                    closed={true}
-                                                                    {...fillProps}
-                                                                    stroke={
-                                                                        isSelected || isHovered
-                                                                            ? SELECTION_COLOR
-                                                                            : undefined
+                                                                    }}
+                                                                    onDragEnd={(e) => {
+                                                                        const newY =
+                                                                            e.target.y() - row.y;
+                                                                        store.updateElement(
+                                                                            row.id,
+                                                                            el.id,
+                                                                            {
+                                                                                x: e.target.x(),
+                                                                                y: newY,
+                                                                            }
+                                                                        );
+                                                                    }}
+                                                                    onMouseEnter={() =>
+                                                                        store.setHoveredElement(el.id)
                                                                     }
-                                                                    strokeWidth={
-                                                                        (isSelected || isHovered
-                                                                            ? 1
-                                                                            : 0) / store.zoom
+                                                                    onMouseLeave={() =>
+                                                                        store.setHoveredElement(null)
                                                                     }
-                                                                    listening={false}
-                                                                />
+                                                                >
+                                                                    {/* Transparent hit area for click/drag detection */}
+                                                                    <Rect
+                                                                        x={0}
+                                                                        y={0}
+                                                                        width={el.width}
+                                                                        height={el.height}
+                                                                        fill="transparent"
+                                                                    />
+                                                                    <Line
+                                                                        points={points}
+                                                                        closed={true}
+                                                                        {...fillProps}
+                                                                        stroke={
+                                                                            isSelected || isHovered
+                                                                                ? SELECTION_COLOR
+                                                                                : undefined
+                                                                        }
+                                                                        strokeWidth={
+                                                                            (isSelected || isHovered
+                                                                                ? 1
+                                                                                : 0) / store.zoom
+                                                                        }
+                                                                        listening={false}
+                                                                    />
+                                                                </Group>
+                                                                {/* Resize handles - outside positioned group, use absolute coords */}
                                                                 {isSelected && (
                                                                     <>
-                                                                        {/* Interactive Resize handles */}
                                                                         <ElementResizeHandle
                                                                             el={el}
                                                                             rowY={row.y}

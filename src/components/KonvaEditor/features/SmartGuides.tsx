@@ -52,7 +52,7 @@ export const calculateSnap = (
     const elCenterX = elLeft + element.width / 2;
     const elCenterY = elTop + element.height / 2;
 
-    // Snap to canvas edges
+    // Snap to canvas edges and guidelines
     // Left edge
     if (Math.abs(elLeft) < snapThreshold) {
         snapX = 0;
@@ -63,7 +63,7 @@ export const calculateSnap = (
         snapX = canvasWidth - element.width;
         guides.push({ type: 'vertical', position: canvasWidth, start: elTop - 20, end: elBottom + 20 });
     }
-    // Center X of canvas
+    // Center X of canvas (1/2)
     if (Math.abs(elCenterX - canvasWidth / 2) < snapThreshold) {
         snapX = canvasWidth / 2 - element.width / 2;
         guides.push({
@@ -71,9 +71,90 @@ export const calculateSnap = (
             position: canvasWidth / 2,
             start: elTop - 20,
             end: elBottom + 20,
-            label: 'center',
+            label: '1/2',
         });
     }
+    // 1/3 guideline
+    const oneThird = canvasWidth / 3;
+    if (Math.abs(elCenterX - oneThird) < snapThreshold) {
+        snapX = oneThird - element.width / 2;
+        guides.push({
+            type: 'vertical',
+            position: oneThird,
+            start: elTop - 20,
+            end: elBottom + 20,
+            label: '1/3',
+        });
+    }
+    if (Math.abs(elLeft - oneThird) < snapThreshold) {
+        snapX = oneThird;
+        guides.push({ type: 'vertical', position: oneThird, start: elTop - 20, end: elBottom + 20 });
+    }
+    if (Math.abs(elRight - oneThird) < snapThreshold) {
+        snapX = oneThird - element.width;
+        guides.push({ type: 'vertical', position: oneThird, start: elTop - 20, end: elBottom + 20 });
+    }
+    // 2/3 guideline
+    const twoThirds = (canvasWidth * 2) / 3;
+    if (Math.abs(elCenterX - twoThirds) < snapThreshold) {
+        snapX = twoThirds - element.width / 2;
+        guides.push({
+            type: 'vertical',
+            position: twoThirds,
+            start: elTop - 20,
+            end: elBottom + 20,
+            label: '2/3',
+        });
+    }
+    if (Math.abs(elLeft - twoThirds) < snapThreshold) {
+        snapX = twoThirds;
+        guides.push({ type: 'vertical', position: twoThirds, start: elTop - 20, end: elBottom + 20 });
+    }
+    if (Math.abs(elRight - twoThirds) < snapThreshold) {
+        snapX = twoThirds - element.width;
+        guides.push({ type: 'vertical', position: twoThirds, start: elTop - 20, end: elBottom + 20 });
+    }
+
+    // Snap to row boundaries
+    rows.forEach((row) => {
+        const rowTop = row.y;
+        const rowBottom = row.y + row.height;
+        const rowCenterY = row.y + row.height / 2;
+
+        // Snap to row top
+        if (Math.abs(elTop - rowTop) < snapThreshold && snapY === null) {
+            snapY = rowTop - rowY;
+            guides.push({
+                type: 'horizontal',
+                position: rowTop,
+                start: 0,
+                end: canvasWidth,
+                label: 'row',
+            });
+        }
+        // Snap to row bottom
+        if (Math.abs(elBottom - rowBottom) < snapThreshold && snapY === null) {
+            snapY = rowBottom - rowY - element.height;
+            guides.push({
+                type: 'horizontal',
+                position: rowBottom,
+                start: 0,
+                end: canvasWidth,
+                label: 'row',
+            });
+        }
+        // Snap to row center
+        if (Math.abs(elCenterY - rowCenterY) < snapThreshold && snapY === null) {
+            snapY = rowCenterY - rowY - element.height / 2;
+            guides.push({
+                type: 'horizontal',
+                position: rowCenterY,
+                start: 0,
+                end: canvasWidth,
+                label: '1/2',
+            });
+        }
+    });
 
     // Snap to other elements
     rows.forEach((row) => {
@@ -217,6 +298,7 @@ export const SmartGuides: React.FC<SmartGuidesProps> = observer(({ enabled, guid
                         }
                         stroke="#ff3366"
                         strokeWidth={strokeWidth}
+                        dash={[6 / zoom, 3 / zoom]}
                         listening={false}
                     />
                     {guide.label && (

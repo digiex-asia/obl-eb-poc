@@ -44,7 +44,7 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
     );
 
     return (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-gray-200 z-40">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-gray-200 z-40">
             <div className="flex items-center gap-1 pr-2 border-r border-gray-200">
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
                     Align
