@@ -28,13 +28,7 @@ interface SidebarProps {
     onAddSpecialBlock: (type: 'freeform' | 'divider' | 'spacer') => void;
 }
 
-const DraggableLayoutItem = ({
-    layout,
-    onClick,
-}: {
-    layout: number[];
-    onClick: () => void;
-}) => {
+const DraggableLayoutItem = ({ layout, onClick }: { layout: number[]; onClick: () => void }) => {
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.setData('layout', JSON.stringify(layout));
     };
@@ -62,15 +56,7 @@ const DraggableLayoutItem = ({
     );
 };
 
-const ShapeItem = ({
-    type,
-    icon: Icon,
-    label,
-}: {
-    type: string;
-    icon: any;
-    label?: string;
-}) => {
+const ShapeItem = ({ type, icon: Icon, label }: { type: string; icon: any; label?: string }) => {
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.setData('type', type);
     };
@@ -97,10 +83,7 @@ const MediaItem = ({ src }: { src: string }) => {
             onDragStart={handleDragStart}
             className="aspect-square rounded-lg overflow-hidden cursor-grab bg-gray-100"
         >
-            <img
-                src={src}
-                className="w-full h-full object-cover pointer-events-none"
-            />
+            <img src={src} className="w-full h-full object-cover pointer-events-none" />
         </div>
     );
 };
@@ -132,23 +115,17 @@ const SpacerBlock = ({ onClick }: { onClick: () => void }) => (
     </div>
 );
 
-export const Sidebar = ({
-    onAddRow,
-    onAddElement,
-    onAddSpecialBlock,
-}: SidebarProps) => {
-    const [activeTab, setActiveTab] = useState<
-        'blocks' | 'media' | 'shapes' | 'text' | 'button'
-    >('blocks');
+export const Sidebar = ({ onAddRow, onAddElement, onAddSpecialBlock }: SidebarProps) => {
+    const [activeTab, setActiveTab] = useState<'blocks' | 'media' | 'shapes' | 'text' | 'button'>(
+        'blocks'
+    );
     return (
         <div className="flex h-full bg-white shadow-xl z-10">
             <div className="w-[72px] border-r border-gray-200 flex flex-col h-full overflow-y-auto hide-scrollbar">
                 <button
                     onClick={() => setActiveTab('blocks')}
                     className={`w-full aspect-square flex flex-col items-center justify-center gap-1 ${
-                        activeTab === 'blocks'
-                            ? 'bg-gray-100 text-black'
-                            : 'text-gray-500'
+                        activeTab === 'blocks' ? 'bg-gray-100 text-black' : 'text-gray-500'
                     }`}
                 >
                     <LayoutGrid size={20} />
@@ -157,9 +134,7 @@ export const Sidebar = ({
                 <button
                     onClick={() => setActiveTab('media')}
                     className={`w-full aspect-square flex flex-col items-center justify-center gap-1 ${
-                        activeTab === 'media'
-                            ? 'bg-gray-100 text-black'
-                            : 'text-gray-500'
+                        activeTab === 'media' ? 'bg-gray-100 text-black' : 'text-gray-500'
                     }`}
                 >
                     <ImageIcon size={20} />
@@ -168,9 +143,7 @@ export const Sidebar = ({
                 <button
                     onClick={() => setActiveTab('shapes')}
                     className={`w-full aspect-square flex flex-col items-center justify-center gap-1 ${
-                        activeTab === 'shapes'
-                            ? 'bg-gray-100 text-black'
-                            : 'text-gray-500'
+                        activeTab === 'shapes' ? 'bg-gray-100 text-black' : 'text-gray-500'
                     }`}
                 >
                     <Shapes size={20} />
@@ -180,9 +153,7 @@ export const Sidebar = ({
                 <button
                     onClick={() => setActiveTab('text')}
                     className={`w-full aspect-square flex flex-col items-center justify-center gap-1 ${
-                        activeTab === 'text'
-                            ? 'bg-gray-100 text-black'
-                            : 'text-gray-500'
+                        activeTab === 'text' ? 'bg-gray-100 text-black' : 'text-gray-500'
                     }`}
                 >
                     <Type size={20} />
@@ -191,9 +162,7 @@ export const Sidebar = ({
                 <button
                     onClick={() => setActiveTab('button')}
                     className={`w-full aspect-square flex flex-col items-center justify-center gap-1 ${
-                        activeTab === 'button'
-                            ? 'bg-gray-100 text-black'
-                            : 'text-gray-500'
+                        activeTab === 'button' ? 'bg-gray-100 text-black' : 'text-gray-500'
                     }`}
                 >
                     <MousePointer2 size={20} />
@@ -209,9 +178,7 @@ export const Sidebar = ({
                 {activeTab === 'blocks' && (
                     <div className="space-y-6">
                         <div>
-                            <h1 className="text-2xl font-bold mb-1">
-                                HTML Block
-                            </h1>
+                            <h1 className="text-2xl font-bold mb-1">HTML Block</h1>
                             <p className="text-xs text-gray-500 mb-4">
                                 Responsive, editable, and email-safe.
                             </p>
@@ -226,9 +193,7 @@ export const Sidebar = ({
                                 />
                                 <DraggableLayoutItem
                                     layout={[100 / 3, 100 / 3, 100 / 3]}
-                                    onClick={() =>
-                                        onAddRow([100 / 3, 100 / 3, 100 / 3])
-                                    }
+                                    onClick={() => onAddRow([100 / 3, 100 / 3, 100 / 3])}
                                 />
                                 <DraggableLayoutItem
                                     layout={[25, 25, 25, 25]}
@@ -251,9 +216,7 @@ export const Sidebar = ({
                             <p className="text-xs text-gray-500 mb-3">
                                 Design without limits. Exports as image.
                             </p>
-                            <FreeFormBlock
-                                onClick={() => onAddSpecialBlock('freeform')}
-                            />
+                            <FreeFormBlock onClick={() => onAddSpecialBlock('freeform')} />
                         </div>
                         <div>
                             <h2 className="text-sm font-bold text-gray-900 mb-2">
@@ -262,30 +225,15 @@ export const Sidebar = ({
                             <div className="space-y-3">
                                 <div
                                     draggable
-                                    onDragStart={(e) =>
-                                        e.dataTransfer.setData('type', 'spacer')
-                                    }
+                                    onDragStart={(e) => e.dataTransfer.setData('type', 'spacer')}
                                 >
-                                    <SpacerBlock
-                                        onClick={() =>
-                                            onAddSpecialBlock('spacer')
-                                        }
-                                    />
+                                    <SpacerBlock onClick={() => onAddSpecialBlock('spacer')} />
                                 </div>
                                 <div
                                     draggable
-                                    onDragStart={(e) =>
-                                        e.dataTransfer.setData(
-                                            'type',
-                                            'divider'
-                                        )
-                                    }
+                                    onDragStart={(e) => e.dataTransfer.setData('type', 'divider')}
                                 >
-                                    <DividerBlock
-                                        onClick={() =>
-                                            onAddSpecialBlock('divider')
-                                        }
-                                    />
+                                    <DividerBlock onClick={() => onAddSpecialBlock('divider')} />
                                 </div>
                             </div>
                         </div>
@@ -293,14 +241,9 @@ export const Sidebar = ({
                 )}
                 {activeTab === 'media' && (
                     <div className="grid grid-cols-2 gap-3">
-                        <h1 className="text-2xl font-bold col-span-2 mb-4">
-                            Media
-                        </h1>
+                        <h1 className="text-2xl font-bold col-span-2 mb-4">Media</h1>
                         {SAMPLE_IMAGES.map((src, i) => (
-                            <div
-                                key={i}
-                                onClick={() => onAddElement('image', src)}
-                            >
+                            <div key={i} onClick={() => onAddElement('image', src)}>
                                 <MediaItem src={src} />
                             </div>
                         ))}
@@ -308,9 +251,7 @@ export const Sidebar = ({
                 )}
                 {activeTab === 'shapes' && (
                     <div className="flex flex-col h-full">
-                        <h1 className="text-2xl font-bold text-gray-900 mb-4">
-                            Add Shapes
-                        </h1>
+                        <h1 className="text-2xl font-bold text-gray-900 mb-4">Add Shapes</h1>
                         <div className="relative mb-4">
                             <Search
                                 size={16}
@@ -326,15 +267,9 @@ export const Sidebar = ({
                             <span className="text-gray-900 border-b-2 border-black pb-2 -mb-2.5">
                                 Masks
                             </span>
-                            <span className="hover:text-gray-800 cursor-pointer">
-                                Lines
-                            </span>
-                            <span className="hover:text-gray-800 cursor-pointer">
-                                Graphics
-                            </span>
-                            <span className="hover:text-gray-800 cursor-pointer">
-                                Symbols
-                            </span>
+                            <span className="hover:text-gray-800 cursor-pointer">Lines</span>
+                            <span className="hover:text-gray-800 cursor-pointer">Graphics</span>
+                            <span className="hover:text-gray-800 cursor-pointer">Symbols</span>
                         </div>
                         <div className="grid grid-cols-3 gap-3">
                             <div onClick={() => onAddElement('rect')}>
@@ -373,20 +308,15 @@ export const Sidebar = ({
                         <div className="space-y-3">
                             <div
                                 draggable
-                                onDragStart={(e) =>
-                                    e.dataTransfer.setData('type', 'text')
-                                }
+                                onDragStart={(e) => e.dataTransfer.setData('type', 'text')}
                                 onClick={() => onAddElement('text')}
                                 className="p-4 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:border-blue-400 flex items-center gap-3"
                             >
-                                <Heading size={20} />{' '}
-                                <span className="font-medium">Heading</span>
+                                <Heading size={20} /> <span className="font-medium">Heading</span>
                             </div>
                             <div
                                 draggable
-                                onDragStart={(e) =>
-                                    e.dataTransfer.setData('type', 'text')
-                                }
+                                onDragStart={(e) => e.dataTransfer.setData('type', 'text')}
                                 onClick={() => onAddElement('text')}
                                 className="p-4 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:border-blue-400 flex items-center gap-3"
                             >
@@ -401,9 +331,7 @@ export const Sidebar = ({
                         <h1 className="text-2xl font-bold mb-4">Button</h1>
                         <div
                             draggable
-                            onDragStart={(e) =>
-                                e.dataTransfer.setData('type', 'button')
-                            }
+                            onDragStart={(e) => e.dataTransfer.setData('type', 'button')}
                             onClick={() => onAddElement('button')}
                             className="p-4 bg-blue-500 text-white rounded flex justify-center cursor-pointer shadow-sm hover:bg-blue-600"
                         >
@@ -415,4 +343,3 @@ export const Sidebar = ({
         </div>
     );
 };
-

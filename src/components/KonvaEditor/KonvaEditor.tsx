@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Stage, Layer, Rect, Circle, Text, Image as KonvaImage, Line, Group } from 'react-konva';
+import Konva from 'konva';
 import EditorStore from '../../common/stores/EditorStore';
+import { DebugHighlighter } from '../../utils/DebugKonva';
 import {
     CANVAS_WIDTH,
     PAGE_BG_COLOR,
@@ -19,6 +21,22 @@ import { ZoomControls } from '../shared/ZoomControls';
 import { ColorPicker } from '../shared/ColorPicker';
 import { Copy, Trash2, Palette } from 'lucide-react';
 import { EditorElement } from '../../common/stores/types';
+import {
+    FPSCounter,
+    BoundingBoxes,
+    GridOverlay,
+    DebugPanel,
+    SnapGuides,
+    DistanceIndicators,
+    type DebugEvent,
+} from './debug';
+import {
+    SmartGuides,
+    calculateSnap,
+    DistanceMeasurement,
+    AlignmentToolbar,
+    type SnapGuide,
+} from './features';
 
 const store = new EditorStore();
 
@@ -52,19 +70,28 @@ const RowResizeHandle = observer(
         row,
         store,
         onHeightChange,
-        stageCenterX,
     }: {
         row: (typeof store.rows)[0] & { y: number };
         store: EditorStore;
         onHeightChange: (height: number) => void;
-        stageCenterX: number;
     }) => {
+        const groupRef = useRef<Konva.Group>(null);
         const initialHeightRef = useRef<number>(row.height);
         const pillHValue = 6 / store.zoom;
         // Group origin should be at row.y + row.height - pillHValue/2 (matching Canvas positioning)
         const initialYRef = useRef<number>(row.y + row.height - pillHValue / 2);
         const [localHeight, setLocalHeight] = useState<number | null>(null);
         const isDraggingRef = useRef(false);
+
+        // Pill X position: center of paper (matching CanvasEditor behavior)
+        const pillCenterX = CANVAS_WIDTH / 2 + 15;
+
+        // Move pill to top when row is selected (on mount)
+        useEffect(() => {
+            if (groupRef.current) {
+                groupRef.current.moveToTop();
+            }
+        }, []);
 
         // Update refs when row changes (but not during drag)
         useEffect(() => {
@@ -76,6 +103,10 @@ const RowResizeHandle = observer(
         }, [row.height, row.y, pillHValue]);
 
         const handleDragStart = (e: any) => {
+            // Move to top when starting drag for resize
+            if (groupRef.current) {
+                groupRef.current.moveToTop();
+            }
             isDraggingRef.current = true;
             initialHeightRef.current = row.height;
             // Capture the actual Group Y position at drag start (in logical coordinates)
@@ -113,17 +144,18 @@ const RowResizeHandle = observer(
 
         return (
             <Group
-                x={stageCenterX}
+                ref={groupRef}
+                x={pillCenterX}
                 y={displayY}
                 draggable
                 dragBoundFunc={(pos) => {
                     // Calculate delta (both pos.y and initialYRef are in logical coordinates)
                     const deltaY = pos.y - initialYRef.current;
                     const newHeight = Math.max(50, initialHeightRef.current + deltaY);
-                    // Position Group so Rect center aligns with bottom border, centered on stage
-                    // stageCenterX is recalculated on each render based on viewport and zoom
+                    // Keep X fixed at center of paper, only allow Y movement
+                    console.log('PILL X CENTER', pillCenterX);
                     return {
-                        x: stageCenterX,
+                        x: pillCenterX,
                         y: row.y + newHeight - pillHValue / 2,
                     };
                 }}
@@ -132,7 +164,7 @@ const RowResizeHandle = observer(
                 onDragEnd={handleDragEnd}
             >
                 <Rect
-                    x={-pillW / 2}
+                    x={-pillW + 600 / 2}
                     y={0}
                     width={pillW}
                     height={pillHValue}
@@ -473,6 +505,99 @@ const KonvaEditor = observer(() => {
     const [tempHeights, setTempHeights] = useState<Map<string, number>>(new Map());
     // Track column resizing state
     const [isResizingColumn, setIsResizingColumn] = useState(false);
+    // Debug mode state (controls ruler and other debug features)
+    const [debugMode, setDebugMode] = useState(false);
+    // Ruler enabled follows debug mode
+    const rulerEnabled = debugMode;
+    const [mouseCanvasPos, setMouseCanvasPos] = useState<{
+        x: number;
+        y: number;
+        screenX: number;
+        screenY: number;
+    } | null>(null);
+    // Debug panel options
+    const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
+    const [showGrid, setShowGrid] = useState(false);
+    // Event logger
+    const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
+    const eventIdRef = useRef(0);
+
+    const logDebugEvent = (
+        type: string,
+        x?: number,
+        y?: number,
+        target?: string,
+        details?: string
+    ) => {
+        if (!debugMode) return;
+        setDebugEvents((prev) => {
+            const newEvent: DebugEvent = {
+                id: eventIdRef.current++,
+                timestamp: Date.now(),
+                type,
+                x,
+                y,
+                target,
+                details,
+            };
+            const updated = [...prev, newEvent];
+            // Keep only last 100 events
+            return updated.slice(-100);
+        });
+    };
+
+    const clearDebugEvents = () => setDebugEvents([]);
+
+    // Smart Guides & Snapping features (Figma-like)
+    const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true);
+    const [snappingEnabled, setSnappingEnabled] = useState(true);
+    const [showDistances, setShowDistances] = useState(false);
+    const [gridSnapping, setGridSnapping] = useState(false);
+    const [activeGuides, setActiveGuides] = useState<SnapGuide[]>([]);
+
+    // Snapping helper - calculates snapped position and updates guides
+    const handleElementDragWithSnap = (
+        element: { x: number; y: number; width: number; height: number },
+        rowY: number,
+        rowId: string,
+        elementId: string,
+        rowPositions: Array<{ id: string; y: number; height: number; elements: EditorElement[] }>
+    ) => {
+        if (!snappingEnabled && !smartGuidesEnabled) {
+            setActiveGuides([]);
+            return { x: element.x, y: element.y };
+        }
+
+        const snapResult = calculateSnap(
+            element,
+            rowY,
+            rowPositions,
+            rowId,
+            elementId,
+            CANVAS_WIDTH,
+            gridSnapping ? 10 : 5
+        );
+
+        // Apply grid snapping if enabled
+        let finalX = snapResult.x !== null ? snapResult.x : element.x;
+        let finalY = snapResult.y !== null ? snapResult.y : element.y;
+
+        if (gridSnapping && snapResult.x === null) {
+            finalX = Math.round(element.x / 10) * 10;
+        }
+        if (gridSnapping && snapResult.y === null) {
+            finalY = Math.round(element.y / 10) * 10;
+        }
+
+        // Update guides for visualization
+        if (smartGuidesEnabled) {
+            setActiveGuides(snapResult.guides);
+        }
+
+        return { x: snappingEnabled ? finalX : element.x, y: snappingEnabled ? finalY : element.y };
+    };
+
+    const clearSnapGuides = () => setActiveGuides([]);
 
     const getRowHeight = (rowId: string, defaultHeight: number) => {
         return tempHeights.get(rowId) ?? defaultHeight;
@@ -552,6 +677,8 @@ const KonvaEditor = observer(() => {
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         store.setDragTarget(null);
+
+        console.log('E', e);
 
         const type = e.dataTransfer.getData('type');
         const layout = e.dataTransfer.getData('layout');
@@ -640,9 +767,35 @@ const KonvaEditor = observer(() => {
     const paperScreenX = viewportW > 0 ? (viewportW - paperScreenW) / 2 : 0;
     const stageWidth = viewportW || 800;
     const stageHeight = viewportH || 600;
-    // Calculate stage center X in logical coordinates (relative to Group)
-    // Stage center in screen space is stageWidth/2, convert to Group's coordinate system
-    const stageCenterX = (stageWidth / 2 - paperScreenX) / store.zoom;
+
+    // Ruler size constant
+    const RULER_SIZE = 24;
+
+    // Handle mouse move for ruler coordinate tracking
+    const handleMouseMove = () => {
+        if (!rulerEnabled) return;
+
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+
+        // Convert screen position to canvas logical coordinates
+        const canvasX = (pointer.x - paperScreenX) / store.zoom;
+        const canvasY = (pointer.y + scrollY) / store.zoom;
+
+        setMouseCanvasPos({
+            x: Math.round(canvasX),
+            y: Math.round(canvasY),
+            screenX: pointer.x,
+            screenY: pointer.y,
+        });
+    };
+
+    const handleMouseLeave = () => {
+        setMouseCanvasPos(null);
+    };
 
     // Calculate row Y positions using temporary heights during drag
     const rowPositions = store.rows.reduce(
@@ -661,7 +814,12 @@ const KonvaEditor = observer(() => {
 
     return (
         <div className="flex h-screen w-screen overflow-hidden font-sans bg-gray-100 text-gray-900 select-none flex-col">
-            <TopBar width={CANVAS_WIDTH} height={totalHeight} />
+            <TopBar
+                width={CANVAS_WIDTH}
+                height={totalHeight}
+                debugMode={debugMode}
+                onDebugModeChange={setDebugMode}
+            />
 
             <div className="flex-1 flex overflow-hidden relative">
                 <Sidebar
@@ -699,6 +857,8 @@ const KonvaEditor = observer(() => {
                             width={stageWidth}
                             height={stageHeight}
                             onClick={handleStageClick}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeave}
                         >
                             <Layer>
                                 {/* Background */}
@@ -723,7 +883,7 @@ const KonvaEditor = observer(() => {
                                         y={40}
                                         width={CANVAS_WIDTH}
                                         height={totalHeight}
-                                        fill="#ffffff"
+                                        fill="#00ffff"
                                         shadowBlur={20}
                                         shadowColor="rgba(0,0,0,0.1)"
                                         shadowOffsetY={10}
@@ -744,7 +904,7 @@ const KonvaEditor = observer(() => {
                                                     width={CANVAS_WIDTH}
                                                     height={row.height}
                                                     {...getFillProps(
-                                                        row.backgroundColor || '#ffffff',
+                                                        row.backgroundColor || '#00ffff',
                                                         CANVAS_WIDTH
                                                     )}
                                                     onClick={() => store.selectRow(row.id)}
@@ -891,34 +1051,6 @@ const KonvaEditor = observer(() => {
                                                                 listening={false}
                                                             />
                                                         </Group>
-                                                        {/* Resize Handle */}
-                                                        <RowResizeHandle
-                                                            row={{
-                                                                ...row,
-                                                                height: row.height,
-                                                            }}
-                                                            store={store}
-                                                            stageCenterX={stageCenterX}
-                                                            onHeightChange={(height) => {
-                                                                if (height > 0) {
-                                                                    setTempHeights((prev) => {
-                                                                        const newMap = new Map(
-                                                                            prev
-                                                                        );
-                                                                        newMap.set(row.id, height);
-                                                                        return newMap;
-                                                                    });
-                                                                } else {
-                                                                    setTempHeights((prev) => {
-                                                                        const newMap = new Map(
-                                                                            prev
-                                                                        );
-                                                                        newMap.delete(row.id);
-                                                                        return newMap;
-                                                                    });
-                                                                }
-                                                            }}
-                                                        />
                                                         {/* Row Badge */}
                                                         {(() => {
                                                             const logicalViewportLeft =
@@ -1280,76 +1412,63 @@ const KonvaEditor = observer(() => {
                                                                         );
                                                                     }}
                                                                     onDragMove={(e) => {
-                                                                        const newY =
-                                                                            e.target.y() - row.y;
-                                                                        // Auto-resize row if element is dragged to bottom - use temp height for smooth resizing
-                                                                        const currentMaxBottom =
-                                                                            row.elements.reduce(
-                                                                                (max, elem) => {
-                                                                                    if (
-                                                                                        elem.id ===
-                                                                                        el.id
-                                                                                    ) {
-                                                                                        return Math.max(
-                                                                                            max,
-                                                                                            newY +
-                                                                                                elem.height
-                                                                                        );
-                                                                                    }
-                                                                                    return Math.max(
-                                                                                        max,
-                                                                                        elem.y +
-                                                                                            elem.height
-                                                                                    );
-                                                                                },
-                                                                                0
-                                                                            );
-                                                                        const newHeight = Math.max(
-                                                                            150,
-                                                                            currentMaxBottom + 40
+                                                                        // Calculate raw position from drag
+                                                                        const rawX = e.target.x();
+                                                                        const rawY = e.target.y() - row.y;
+
+                                                                        // Apply snapping
+                                                                        const snapped = handleElementDragWithSnap(
+                                                                            { x: rawX, y: rawY, width: el.width, height: el.height },
+                                                                            row.y,
+                                                                            row.id,
+                                                                            el.id,
+                                                                            rowPositions
                                                                         );
-                                                                        if (
-                                                                            newHeight > row.height
-                                                                        ) {
-                                                                            setTempHeights(
-                                                                                (prev) => {
-                                                                                    const newMap =
-                                                                                        new Map(
-                                                                                            prev
-                                                                                        );
-                                                                                    newMap.set(
-                                                                                        row.id,
-                                                                                        newHeight
-                                                                                    );
-                                                                                    return newMap;
+
+                                                                        // Auto-resize row if element is dragged to bottom
+                                                                        const currentMaxBottom = row.elements.reduce(
+                                                                            (max, elem) => {
+                                                                                if (elem.id === el.id) {
+                                                                                    return Math.max(max, snapped.y + elem.height);
                                                                                 }
-                                                                            );
+                                                                                return Math.max(max, elem.y + elem.height);
+                                                                            },
+                                                                            0
+                                                                        );
+                                                                        const newHeight = Math.max(150, currentMaxBottom + 40);
+                                                                        if (newHeight > row.height) {
+                                                                            setTempHeights((prev) => {
+                                                                                const newMap = new Map(prev);
+                                                                                newMap.set(row.id, newHeight);
+                                                                                return newMap;
+                                                                            });
                                                                         }
                                                                     }}
                                                                     onDragEnd={(e) => {
-                                                                        const newY =
-                                                                            e.target.y() - row.y;
-                                                                        store.updateElement(
+                                                                        // Calculate final position with snapping
+                                                                        const rawX = e.target.x();
+                                                                        const rawY = e.target.y() - row.y;
+                                                                        const snapped = handleElementDragWithSnap(
+                                                                            { x: rawX, y: rawY, width: el.width, height: el.height },
+                                                                            row.y,
                                                                             row.id,
                                                                             el.id,
-                                                                            {
-                                                                                x: e.target.x(),
-                                                                                y: newY,
-                                                                            }
+                                                                            rowPositions
                                                                         );
-                                                                        // Clear temp height after update
+
+                                                                        store.updateElement(row.id, el.id, {
+                                                                            x: snapped.x,
+                                                                            y: snapped.y,
+                                                                        });
+
+                                                                        // Clear temp height and guides after update
+                                                                        clearSnapGuides();
                                                                         setTimeout(() => {
-                                                                            setTempHeights(
-                                                                                (prev) => {
-                                                                                    const newMap =
-                                                                                        new Map(
-                                                                                            prev
-                                                                                        );
-                                                                                    newMap.delete(
-                                                                                        row.id
-                                                                                    );
-                                                                                    return newMap;
-                                                                                }
+                                                                            setTempHeights((prev) => {
+                                                                                const newMap = new Map(prev);
+                                                                                newMap.delete(row.id);
+                                                                                return newMap;
+                                                                            }
                                                                             );
                                                                         }, 0);
                                                                     }}
@@ -1430,58 +1549,53 @@ const KonvaEditor = observer(() => {
                                                                         );
                                                                     }}
                                                                     onDragMove={(e) => {
-                                                                        const newY =
-                                                                            e.target.y() -
-                                                                            row.y -
-                                                                            el.height / 2;
-                                                                        const currentMaxBottom =
-                                                                            row.elements.reduce(
-                                                                                (max, elem) => {
-                                                                                    if (
-                                                                                        elem.id ===
-                                                                                        el.id
-                                                                                    ) {
-                                                                                        return Math.max(
-                                                                                            max,
-                                                                                            newY +
-                                                                                                elem.height
-                                                                                        );
-                                                                                    }
-                                                                                    return Math.max(
-                                                                                        max,
-                                                                                        elem.y +
-                                                                                            elem.height
-                                                                                    );
-                                                                                },
-                                                                                0
-                                                                            );
-                                                                        const newHeight = Math.max(
-                                                                            150,
-                                                                            currentMaxBottom + 40
+                                                                        // Calculate raw position from drag
+                                                                        const rawX = e.target.x() - el.width / 2;
+                                                                        const rawY = e.target.y() - row.y - el.height / 2;
+
+                                                                        // Apply snapping
+                                                                        const snapped = handleElementDragWithSnap(
+                                                                            { x: rawX, y: rawY, width: el.width, height: el.height },
+                                                                            row.y,
+                                                                            row.id,
+                                                                            el.id,
+                                                                            rowPositions
                                                                         );
-                                                                        if (
-                                                                            newHeight > row.height
-                                                                        ) {
-                                                                            store.updateRowHeight(
-                                                                                row.id,
-                                                                                newHeight
-                                                                            );
+
+                                                                        // Auto-expand row if needed
+                                                                        const currentMaxBottom = row.elements.reduce(
+                                                                            (max, elem) => {
+                                                                                if (elem.id === el.id) {
+                                                                                    return Math.max(max, snapped.y + elem.height);
+                                                                                }
+                                                                                return Math.max(max, elem.y + elem.height);
+                                                                            },
+                                                                            0
+                                                                        );
+                                                                        const newHeight = Math.max(150, currentMaxBottom + 40);
+                                                                        if (newHeight > row.height) {
+                                                                            store.updateRowHeight(row.id, newHeight);
                                                                         }
                                                                     }}
                                                                     onDragEnd={(e) => {
-                                                                        store.updateElement(
+                                                                        // Calculate final position with snapping
+                                                                        const rawX = e.target.x() - el.width / 2;
+                                                                        const rawY = e.target.y() - row.y - el.height / 2;
+                                                                        const snapped = handleElementDragWithSnap(
+                                                                            { x: rawX, y: rawY, width: el.width, height: el.height },
+                                                                            row.y,
                                                                             row.id,
                                                                             el.id,
-                                                                            {
-                                                                                x:
-                                                                                    e.target.x() -
-                                                                                    el.width / 2,
-                                                                                y:
-                                                                                    e.target.y() -
-                                                                                    row.y -
-                                                                                    el.height / 2,
-                                                                            }
+                                                                            rowPositions
                                                                         );
+
+                                                                        store.updateElement(row.id, el.id, {
+                                                                            x: snapped.x,
+                                                                            y: snapped.y,
+                                                                        });
+
+                                                                        // Clear guides after drag ends
+                                                                        clearSnapGuides();
                                                                     }}
                                                                     onMouseEnter={() =>
                                                                         store.setHoveredElement(
@@ -2263,6 +2377,90 @@ const KonvaEditor = observer(() => {
                                             </Group>
                                         );
                                     })}
+
+                                    {/* Row Resize Handle - rendered AFTER all rows to be on top */}
+                                    {(() => {
+                                        const selectedRow = rowPositions.find(
+                                            (r) => r.id === store.selectedRowId
+                                        );
+                                        if (!selectedRow) return null;
+                                        return (
+                                            <RowResizeHandle
+                                                row={selectedRow}
+                                                store={store}
+                                                onHeightChange={(height) => {
+                                                    if (height > 0) {
+                                                        setTempHeights((prev) => {
+                                                            const newMap = new Map(prev);
+                                                            newMap.set(selectedRow.id, height);
+                                                            return newMap;
+                                                        });
+                                                    } else {
+                                                        setTempHeights((prev) => {
+                                                            const newMap = new Map(prev);
+                                                            newMap.delete(selectedRow.id);
+                                                            return newMap;
+                                                        });
+                                                    }
+                                                }}
+                                            />
+                                        );
+                                    })()}
+
+                                    {/* Debug: Grid Overlay */}
+                                    <GridOverlay
+                                        enabled={debugMode && showGrid}
+                                        canvasWidth={CANVAS_WIDTH}
+                                        canvasHeight={totalHeight + 100}
+                                        gridSpacing={50}
+                                        zoom={store.zoom}
+                                    />
+
+                                    {/* Debug: Bounding Boxes */}
+                                    <BoundingBoxes
+                                        enabled={debugMode && showBoundingBoxes}
+                                        rows={rowPositions}
+                                        canvasWidth={CANVAS_WIDTH}
+                                        zoom={store.zoom}
+                                    />
+
+                                    {/* Debug: Snap Guides */}
+                                    <SnapGuides
+                                        enabled={debugMode}
+                                        rows={rowPositions}
+                                        selectedElementId={store.selectedElementId}
+                                        selectedRowId={store.selectedRowId}
+                                        canvasWidth={CANVAS_WIDTH}
+                                        canvasHeight={totalHeight + 100}
+                                        zoom={store.zoom}
+                                    />
+
+                                    {/* Debug: Distance Indicators */}
+                                    <DistanceIndicators
+                                        enabled={debugMode}
+                                        rows={rowPositions}
+                                        selectedElementId={store.selectedElementId}
+                                        selectedRowId={store.selectedRowId}
+                                        canvasWidth={CANVAS_WIDTH}
+                                        zoom={store.zoom}
+                                    />
+
+                                    {/* Smart Guides (Figma-like alignment guides) */}
+                                    <SmartGuides
+                                        enabled={smartGuidesEnabled}
+                                        guides={activeGuides}
+                                        zoom={store.zoom}
+                                    />
+
+                                    {/* Distance Measurement (Figma-like spacing display) */}
+                                    <DistanceMeasurement
+                                        enabled={showDistances}
+                                        rows={rowPositions}
+                                        selectedElementId={store.selectedElementId}
+                                        selectedRowId={store.selectedRowId}
+                                        canvasWidth={CANVAS_WIDTH}
+                                        zoom={store.zoom}
+                                    />
                                 </Group>
                             </Layer>
                         </Stage>
@@ -2320,7 +2518,211 @@ const KonvaEditor = observer(() => {
                         </div>
                     )}
 
+                    {/* Rulers */}
+                    {rulerEnabled && (
+                        <>
+                            {/* Horizontal Ruler (Top) */}
+                            <div
+                                className="absolute bg-gray-800 text-white text-xs select-none"
+                                style={{
+                                    top: 0,
+                                    left: RULER_SIZE,
+                                    width: stageWidth - RULER_SIZE,
+                                    height: RULER_SIZE,
+                                    overflow: 'hidden',
+                                    zIndex: 100,
+                                }}
+                            >
+                                <svg width={stageWidth - RULER_SIZE} height={RULER_SIZE}>
+                                    {/* Generate tick marks based on canvas coordinates */}
+                                    {(() => {
+                                        const ticks = [];
+                                        const startX =
+                                            -Math.floor(paperScreenX / store.zoom / 50) * 50;
+                                        const endX =
+                                            startX +
+                                            Math.ceil(stageWidth / store.zoom / 50) * 50 +
+                                            100;
+
+                                        for (let x = startX; x <= endX; x += 10) {
+                                            const screenX = paperScreenX + x * store.zoom;
+                                            if (screenX < RULER_SIZE || screenX > stageWidth)
+                                                continue;
+
+                                            const isMajor = x % 100 === 0;
+                                            const isMedium = x % 50 === 0;
+                                            const tickHeight = isMajor ? 16 : isMedium ? 10 : 5;
+
+                                            ticks.push(
+                                                <g key={x}>
+                                                    <line
+                                                        x1={screenX - RULER_SIZE}
+                                                        y1={RULER_SIZE}
+                                                        x2={screenX - RULER_SIZE}
+                                                        y2={RULER_SIZE - tickHeight}
+                                                        stroke="#9ca3af"
+                                                        strokeWidth={1}
+                                                    />
+                                                    {isMajor && (
+                                                        <text
+                                                            x={screenX - RULER_SIZE + 2}
+                                                            y={10}
+                                                            fill="#e5e7eb"
+                                                            fontSize={9}
+                                                        >
+                                                            {x}
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            );
+                                        }
+                                        return ticks;
+                                    })()}
+                                    {/* Mouse position indicator */}
+                                    {mouseCanvasPos && (
+                                        <line
+                                            x1={mouseCanvasPos.screenX - RULER_SIZE}
+                                            y1={0}
+                                            x2={mouseCanvasPos.screenX - RULER_SIZE}
+                                            y2={RULER_SIZE}
+                                            stroke="#ef4444"
+                                            strokeWidth={1}
+                                        />
+                                    )}
+                                </svg>
+                            </div>
+
+                            {/* Vertical Ruler (Left) */}
+                            <div
+                                className="absolute bg-gray-800 text-white text-xs select-none"
+                                style={{
+                                    top: RULER_SIZE,
+                                    left: 0,
+                                    width: RULER_SIZE,
+                                    height: stageHeight - RULER_SIZE,
+                                    overflow: 'hidden',
+                                    zIndex: 100,
+                                }}
+                            >
+                                <svg width={RULER_SIZE} height={stageHeight - RULER_SIZE}>
+                                    {/* Generate tick marks based on canvas coordinates */}
+                                    {(() => {
+                                        const ticks = [];
+                                        const startY = Math.floor(scrollY / store.zoom / 50) * 50;
+                                        const endY =
+                                            startY +
+                                            Math.ceil(stageHeight / store.zoom / 50) * 50 +
+                                            100;
+
+                                        for (let y = startY; y <= endY; y += 10) {
+                                            const screenY = y * store.zoom - scrollY;
+                                            if (screenY < 0 || screenY > stageHeight) continue;
+
+                                            const isMajor = y % 100 === 0;
+                                            const isMedium = y % 50 === 0;
+                                            const tickWidth = isMajor ? 16 : isMedium ? 10 : 5;
+
+                                            ticks.push(
+                                                <g key={y}>
+                                                    <line
+                                                        x1={RULER_SIZE}
+                                                        y1={screenY}
+                                                        x2={RULER_SIZE - tickWidth}
+                                                        y2={screenY}
+                                                        stroke="#9ca3af"
+                                                        strokeWidth={1}
+                                                    />
+                                                    {isMajor && (
+                                                        <text
+                                                            x={2}
+                                                            y={screenY + 10}
+                                                            fill="#e5e7eb"
+                                                            fontSize={9}
+                                                        >
+                                                            {y}
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            );
+                                        }
+                                        return ticks;
+                                    })()}
+                                    {/* Mouse position indicator */}
+                                    {mouseCanvasPos && (
+                                        <line
+                                            x1={0}
+                                            y1={mouseCanvasPos.screenY}
+                                            x2={RULER_SIZE}
+                                            y2={mouseCanvasPos.screenY}
+                                            stroke="#ef4444"
+                                            strokeWidth={1}
+                                        />
+                                    )}
+                                </svg>
+                            </div>
+
+                            {/* Corner box */}
+                            <div
+                                className="absolute bg-gray-900"
+                                style={{
+                                    top: 0,
+                                    left: 0,
+                                    width: RULER_SIZE,
+                                    height: RULER_SIZE,
+                                    zIndex: 101,
+                                }}
+                            />
+
+                            {/* Coordinate Hint following mouse */}
+                            {mouseCanvasPos && (
+                                <div
+                                    className="absolute pointer-events-none bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap"
+                                    style={{
+                                        left: mouseCanvasPos.screenX + 15,
+                                        top: mouseCanvasPos.screenY + 15,
+                                        zIndex: 200,
+                                    }}
+                                >
+                                    <span className="text-red-400">x:</span> {mouseCanvasPos.x}
+                                    <span className="ml-2 text-green-400">y:</span>{' '}
+                                    {mouseCanvasPos.y}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Alignment Toolbar (Figma-like) */}
+                    <AlignmentToolbar
+                        smartGuidesEnabled={smartGuidesEnabled}
+                        onToggleSmartGuides={() => setSmartGuidesEnabled(!smartGuidesEnabled)}
+                        snappingEnabled={snappingEnabled}
+                        onToggleSnapping={() => setSnappingEnabled(!snappingEnabled)}
+                        showDistances={showDistances}
+                        onToggleDistances={() => setShowDistances(!showDistances)}
+                        gridSnapping={gridSnapping}
+                        onToggleGridSnapping={() => setGridSnapping(!gridSnapping)}
+                    />
+
                     <ZoomControls zoom={store.zoom} setZoom={(z) => store.setZoom(z)} />
+
+                    {/* Debug: FPS Counter */}
+                    <FPSCounter enabled={debugMode} />
+
+                    {/* Debug: Panel */}
+                    <DebugPanel
+                        enabled={debugMode}
+                        store={store}
+                        stageRef={stageRef}
+                        viewportW={viewportW}
+                        viewportH={viewportH}
+                        scrollY={scrollY}
+                        events={debugEvents}
+                        onClearEvents={clearDebugEvents}
+                        showBoundingBoxes={showBoundingBoxes}
+                        onToggleBoundingBoxes={() => setShowBoundingBoxes(!showBoundingBoxes)}
+                        showGrid={showGrid}
+                        onToggleGrid={() => setShowGrid(!showGrid)}
+                    />
                 </div>
             </div>
         </div>

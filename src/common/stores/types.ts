@@ -1,6 +1,6 @@
 export const CANVAS_WIDTH = 600;
 export const PAGE_BG_COLOR = '#f3f4f6';
-export const PRIMARY_COLOR = '#3b82f6';
+export const PRIMARY_COLOR = 'RED'; //'#3b82f6';
 export const SELECTION_COLOR = '#d946ef';
 export const ROW_HOVER_COLOR = '#60a5fa';
 export const DROP_TARGET_COLOR = '#10b981';
@@ -57,7 +57,4 @@ export interface EditorState {
 }
 
 export const generateId = () =>
-    crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2, 9);
-
+    crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);

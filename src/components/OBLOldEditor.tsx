@@ -31,12 +31,6 @@ const LaggyRow = ({
     onSelect: (id: string) => void;
     onChangeHeight: (id: string, h: number) => void;
 }) => {
-    // Simulate expensive render logic
-    // const start = performance.now();
-    // while (performance.now() - start < 2) {
-    //     // Busy wait 2ms per row render
-    // }
-
     const isSelected = fullState.selectedRowId === row.id;
 
     return (
