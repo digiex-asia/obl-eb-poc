@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useReducer, useMemo, useCallback } from 'react';
+import * as React from 'react';
 import {
     Play,
     Pause,
@@ -9,22 +9,15 @@ import {
     Circle as CircleIcon,
     Type,
     Image as ImageIcon,
-    Settings,
-    MousePointer2,
     ChevronLeft,
     ChevronRight,
     Layers,
-    MonitorPlay,
     Download,
     Film,
-    Music,
     Palette,
     Search,
     Layout,
     Sparkles,
-    AlignCenter,
-    Move,
-    Grid,
     Star,
     Triangle,
     Hexagon,
@@ -35,10 +28,9 @@ import {
     ArrowDown,
     ArrowLeft,
     ArrowRight,
-    Maximize,
-    Minimize,
-    GripHorizontal,
 } from 'lucide-react';
+
+const { useEffect, useRef, useState, useReducer, useMemo, useCallback } = React;
 
 // --- 1. CONSTANTS & ASSETS ---
 const CANVAS_WIDTH = 800;
@@ -147,14 +139,16 @@ interface AppState {
     pan: { x: number; y: number };
     activeTab: 'blocks' | 'media' | 'shapes' | 'text' | 'animation' | 'color';
     isRightSidebarOpen: boolean;
-    currentTime: number; // For timeline scrubbing
-    timelineHeight: number; // New state for resize
+    currentTime: number; // Global timeline time
+    timelineHeight: number;
+    timelineZoom: number; // pixels per second
 }
 
 // --- 3. STATE & REDUCER ---
 
 type Action =
     | { type: 'ADD_PAGE' }
+    | { type: 'DUPLICATE_PAGE' }
     | { type: 'DELETE_PAGE'; id: string }
     | { type: 'SELECT_PAGE'; id: string }
     | { type: 'ADD_ELEMENT'; elementType: ElementType; src?: string }
@@ -174,7 +168,9 @@ type Action =
     | { type: 'TOGGLE_RIGHT_SIDEBAR'; isOpen?: boolean }
     | { type: 'SET_CURRENT_TIME'; time: number }
     | { type: 'NEXT_PAGE' }
-    | { type: 'SET_TIMELINE_HEIGHT'; height: number };
+    | { type: 'SET_TIMELINE_HEIGHT'; height: number }
+    | { type: 'SET_TIMELINE_ZOOM'; zoom: number }
+    | { type: 'UPDATE_PAGE_DURATION'; id: string; duration: number };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -228,7 +224,8 @@ const initialState: AppState = {
     activeTab: 'media',
     isRightSidebarOpen: false,
     currentTime: 0,
-    timelineHeight: 160, // Default height
+    timelineHeight: 200, // Increased default height
+    timelineZoom: 40, // px per second
 };
 initialState.activePageId = initialState.pages[0].id;
 
@@ -237,7 +234,7 @@ const reducer = (state: AppState, action: Action): AppState => {
         case 'ADD_PAGE':
             const newPage: Page = {
                 id: generateId(),
-                duration: 5,
+                duration: 3,
                 background: '#ffffff',
                 elements: [],
             };
@@ -245,19 +242,37 @@ const reducer = (state: AppState, action: Action): AppState => {
                 ...state,
                 pages: [...state.pages, newPage],
                 activePageId: newPage.id,
-                currentTime: 0,
+                // Do not reset current time on add
             };
+        case 'DUPLICATE_PAGE': {
+            const index = state.pages.findIndex((p) => p.id === state.activePageId);
+            if (index === -1) return state;
+            const sourcePage = state.pages[index];
+            const newPage: Page = {
+                ...sourcePage,
+                id: generateId(),
+                elements: sourcePage.elements.map((el) => ({ ...el, id: generateId() })), // Clone elements with new IDs
+            };
+            const newPages = [...state.pages];
+            newPages.splice(index + 1, 0, newPage);
+            return {
+                ...state,
+                pages: newPages,
+                activePageId: newPage.id,
+            };
+        }
         case 'DELETE_PAGE':
             if (state.pages.length <= 1) return state;
             const filtered = state.pages.filter((p) => p.id !== action.id);
             return { ...state, pages: filtered, activePageId: filtered[0].id };
         case 'SELECT_PAGE':
+            // Calc start time of this page to jump to it?
+            // Optional: Jump timeline to start of selected page
             return {
                 ...state,
                 activePageId: action.id,
                 selectedElementId: null,
                 isPlaying: false,
-                currentTime: 0,
             };
         case 'ADD_ELEMENT':
             return {
@@ -362,14 +377,24 @@ const reducer = (state: AppState, action: Action): AppState => {
                     action.isOpen !== undefined ? action.isOpen : !state.isRightSidebarOpen,
             };
         case 'SET_CURRENT_TIME':
-            return { ...state, currentTime: action.time };
+            return { ...state, currentTime: Math.max(0, action.time) };
         case 'NEXT_PAGE': {
+            // Logic handled in playback loop mostly, but for manual Next
             const currentIndex = state.pages.findIndex((p) => p.id === state.activePageId);
             const nextIndex = (currentIndex + 1) % state.pages.length;
-            return { ...state, activePageId: state.pages[nextIndex].id, currentTime: 0 };
+            return { ...state, activePageId: state.pages[nextIndex].id };
         }
         case 'SET_TIMELINE_HEIGHT':
-            return { ...state, timelineHeight: Math.max(100, Math.min(400, action.height)) };
+            return { ...state, timelineHeight: Math.max(150, Math.min(600, action.height)) };
+        case 'SET_TIMELINE_ZOOM':
+            return { ...state, timelineZoom: Math.max(10, Math.min(200, action.zoom)) };
+        case 'UPDATE_PAGE_DURATION':
+            return {
+                ...state,
+                pages: state.pages.map((p) =>
+                    p.id === action.id ? { ...p, duration: Math.max(1, action.duration) } : p
+                ),
+            };
         default:
             return state;
     }
@@ -384,7 +409,9 @@ const useCanvasEngine = (
     currentTime: number,
     zoom: number,
     pan: { x: number; y: number },
-    dispatch: React.Dispatch<Action>
+    dispatch: React.Dispatch<Action>,
+    // Pass in pageStartTime to calculate local animation time
+    pageStartTime: number
 ) => {
     const dragInfo = useRef<{
         active: boolean;
@@ -468,7 +495,9 @@ const useCanvasEngine = (
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             ctx.shadowColor = 'transparent';
 
-            const elapsed = currentTime;
+            // Calculate local time for this page
+            // If currentTime is 7s, and page starts at 5s, localTime is 2s
+            const localTime = Math.max(0, currentTime - pageStartTime);
 
             page.elements.forEach((el) => {
                 ctx.save();
@@ -478,10 +507,13 @@ const useCanvasEngine = (
                 let animX = el.x;
                 let animScale = 1;
 
-                if (isPlaying || currentTime > 0) {
+                // FIX: Only animate if actively playing.
+                // When paused (editing), show elements at their final/static positions
+                // so the visuals match the mouse hit-detection coordinates.
+                if (isPlaying) {
                     const anim = el.animation;
                     if (anim && anim.type !== 'none') {
-                        const t = Math.max(0, elapsed - anim.delay);
+                        const t = Math.max(0, localTime - anim.delay);
                         const duration = 1 / anim.speed;
                         const progress = Math.min(1, t / duration);
                         const eased = progress * (2 - progress);
@@ -1099,7 +1131,153 @@ const ShapeBtn = ({ icon: Icon, onClick }: any) => (
     </button>
 );
 
-// --- Timeline with Resize Logic ---
+// --- NEW THUMBNAIL COMPONENT (Canvas Based) ---
+const PageThumbnail = ({ page, width, height }: { page: Page; width: number; height: number }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+    const [tick, setTick] = useState(0);
+
+    const getImg = (src: string) => {
+        if (imageCache.current.has(src)) return imageCache.current.get(src)!;
+        const img = new Image();
+        img.src = src;
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => setTick((t) => t + 1); // trigger re-render
+        imageCache.current.set(src, img);
+        return img;
+    };
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Reset transform
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        // Calculate Scale to fit "contain" style
+        const scaleX = width / CANVAS_WIDTH;
+        const scaleY = height / CANVAS_HEIGHT;
+        const scale = Math.min(scaleX, scaleY);
+
+        const dx = (width - CANVAS_WIDTH * scale) / 2;
+        const dy = (height - CANVAS_HEIGHT * scale) / 2;
+
+        ctx.save();
+        ctx.translate(dx, dy);
+        ctx.scale(scale, scale);
+
+        // Clip to actual canvas area
+        ctx.beginPath();
+        ctx.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.clip();
+
+        // 1. Background
+        if (page.background.startsWith('linear-gradient')) {
+            const colors = page.background.match(/#[a-fA-F0-9]{6}/g);
+            if (colors && colors.length >= 2) {
+                const grad = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, 0);
+                grad.addColorStop(0, colors[0]);
+                grad.addColorStop(1, colors[1]);
+                ctx.fillStyle = grad;
+            } else {
+                ctx.fillStyle = '#ffffff';
+            }
+        } else {
+            ctx.fillStyle = page.background;
+        }
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // 2. Elements (Copy of main render logic without animation)
+        page.elements.forEach((el) => {
+            ctx.save();
+            const cx = el.x + el.width / 2;
+            const cy = el.y + el.height / 2;
+            ctx.translate(cx, cy);
+            ctx.rotate((el.rotation * Math.PI) / 180);
+            ctx.translate(-el.width / 2, -el.height / 2);
+
+            if (el.type === 'rect') {
+                ctx.fillStyle = el.fill;
+                ctx.fillRect(0, 0, el.width, el.height);
+            } else if (el.type === 'circle') {
+                ctx.fillStyle = el.fill;
+                ctx.beginPath();
+                ctx.ellipse(
+                    el.width / 2,
+                    el.height / 2,
+                    el.width / 2,
+                    el.height / 2,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            } else if (el.type === 'triangle') {
+                ctx.fillStyle = el.fill;
+                ctx.beginPath();
+                ctx.moveTo(el.width / 2, 0);
+                ctx.lineTo(el.width, el.height);
+                ctx.lineTo(0, el.height);
+                ctx.closePath();
+                ctx.fill();
+            } else if (el.type === 'star') {
+                ctx.fillStyle = el.fill;
+                ctx.beginPath();
+                const cx = el.width / 2,
+                    cy = el.height / 2,
+                    outerRadius = el.width / 2,
+                    innerRadius = el.width / 4;
+                for (let i = 0; i < 5; i++) {
+                    ctx.lineTo(
+                        cx + Math.cos(((18 + i * 72) / 180) * Math.PI) * outerRadius,
+                        cy - Math.sin(((18 + i * 72) / 180) * Math.PI) * outerRadius
+                    );
+                    ctx.lineTo(
+                        cx + Math.cos(((54 + i * 72) / 180) * Math.PI) * innerRadius,
+                        cy - Math.sin(((54 + i * 72) / 180) * Math.PI) * innerRadius
+                    );
+                }
+                ctx.closePath();
+                ctx.fill();
+            } else if (el.type === 'polygon') {
+                ctx.fillStyle = el.fill;
+                ctx.beginPath();
+                const cx = el.width / 2,
+                    cy = el.height / 2,
+                    r = el.width / 2;
+                for (let i = 0; i < 6; i++)
+                    ctx.lineTo(
+                        cx + r * Math.cos((i * 2 * Math.PI) / 6),
+                        cy + r * Math.sin((i * 2 * Math.PI) / 6)
+                    );
+                ctx.closePath();
+                ctx.fill();
+            } else if (el.type === 'image' && el.src) {
+                const img = getImg(el.src);
+                if (img.complete) ctx.drawImage(img, 0, 0, el.width, el.height);
+                else {
+                    ctx.fillStyle = '#ccc';
+                    ctx.fillRect(0, 0, el.width, el.height);
+                }
+            } else if (el.type === 'text' && el.text) {
+                ctx.fillStyle = el.fill;
+                ctx.font = `${el.fontSize}px sans-serif`;
+                ctx.textBaseline = 'top';
+                ctx.fillText(el.text, 0, 0);
+            }
+            ctx.restore();
+        });
+
+        ctx.restore();
+    }, [page, width, height, tick]);
+
+    return <canvas ref={canvasRef} width={width} height={height} className="block w-full h-full" />;
+};
+
+// --- 7. NEW TIMELINE (Video Editor Style) ---
 const Timeline = ({
     pages,
     activePageId,
@@ -1109,145 +1287,274 @@ const Timeline = ({
     isPlaying,
     onTogglePlay,
     currentTime,
-    duration,
-    onScrub,
     height,
     onResize,
+    zoom,
+    onSetZoom,
+    onUpdatePageDuration,
+    onScrub,
 }: any) => {
-    const progressBarRef = useRef<HTMLDivElement>(null);
-    const progressBarWidth = (currentTime / duration) * 100;
-    const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const rulerRef = useRef<HTMLCanvasElement>(null);
+    const headerResizeRef = useRef<{ startY: number; startH: number } | null>(null);
+    const pageResizeRef = useRef<{ id: string; startX: number; initialDuration: number } | null>(
+        null
+    );
 
-    const handleResizeStart = (e: React.MouseEvent) => {
-        resizeRef.current = { startY: e.clientY, startH: height };
-        document.addEventListener('mousemove', handleResizeMove);
-        document.addEventListener('mouseup', handleResizeEnd);
-    };
+    // Calculate total duration for width
+    const totalDuration = pages.reduce((acc: number, p: Page) => acc + p.duration, 0);
+    // Add some padding at the end
+    const totalWidth = Math.max((totalDuration + 5) * zoom, 1000);
 
-    const handleResizeMove = (e: MouseEvent) => {
-        if (!resizeRef.current) return;
-        const dy = resizeRef.current.startY - e.clientY;
-        onResize(resizeRef.current.startH + dy);
-    };
+    // --- ZOOM HANDLER ---
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
 
-    const handleResizeEnd = () => {
-        resizeRef.current = null;
-        document.removeEventListener('mousemove', handleResizeMove);
-        document.removeEventListener('mouseup', handleResizeEnd);
-    };
+        const handleWheel = (e: WheelEvent) => {
+            if (e.metaKey || e.ctrlKey) {
+                e.preventDefault();
+                // Determine direction
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const newZoom = Math.max(10, Math.min(200, zoom * delta));
+                onSetZoom(newZoom);
+            }
+        };
 
-    const handleScrub = (e: React.MouseEvent) => {
-        if (progressBarRef.current) {
-            const rect = progressBarRef.current.getBoundingClientRect();
-            const pos = (e.clientX - rect.left) / rect.width;
-            onScrub(Math.max(0, Math.min(1, pos)) * duration);
+        container.addEventListener('wheel', handleWheel, { passive: false });
+        return () => container.removeEventListener('wheel', handleWheel);
+    }, [zoom]);
+
+    // --- RULER RENDERING ---
+    useEffect(() => {
+        const canvas = rulerRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = totalWidth * dpr;
+        canvas.height = 24 * dpr;
+        ctx.scale(dpr, dpr);
+
+        ctx.clearRect(0, 0, totalWidth, 24);
+        ctx.fillStyle = '#6b7280'; // gray-500 for better visibility on white
+        ctx.font = '10px monospace';
+        ctx.textBaseline = 'top';
+
+        // Determine Tick Interval based on zoom
+        let interval = 1; // seconds
+        if (zoom < 20) interval = 10;
+        else if (zoom < 50) interval = 5;
+        else if (zoom < 100) interval = 1;
+        else interval = 0.5;
+
+        for (let t = 0; t <= totalDuration + 5; t += interval) {
+            const x = t * zoom;
+            const isMajor = t % (interval * 5) === 0 || t === 0;
+            const height = isMajor ? 12 : 6;
+
+            ctx.fillRect(x, 0, 1, height);
+
+            if (isMajor) {
+                // Format MM:SS
+                const m = Math.floor(t / 60);
+                const s = Math.floor(t % 60);
+                const text = `${m}:${s.toString().padStart(2, '0')}`;
+                ctx.fillText(text, x + 4, 0);
+            }
         }
+    }, [zoom, totalWidth, totalDuration]);
+
+    // --- INTERACTION HANDLERS ---
+
+    // 1. Timeline Resize (Height)
+    const handleHeaderResizeStart = (e: React.MouseEvent) => {
+        headerResizeRef.current = { startY: e.clientY, startH: height };
+        document.addEventListener('mousemove', handleHeaderResizeMove);
+        document.addEventListener('mouseup', handleHeaderResizeEnd);
     };
+    const handleHeaderResizeMove = (e: MouseEvent) => {
+        if (!headerResizeRef.current) return;
+        const dy = headerResizeRef.current.startY - e.clientY;
+        onResize(headerResizeRef.current.startH + dy);
+    };
+    const handleHeaderResizeEnd = () => {
+        headerResizeRef.current = null;
+        document.removeEventListener('mousemove', handleHeaderResizeMove);
+        document.removeEventListener('mouseup', handleHeaderResizeEnd);
+    };
+
+    // 2. Page Duration Resize (Width)
+    const handlePageResizeStart = (
+        e: React.MouseEvent,
+        pageId: string,
+        currentDuration: number
+    ) => {
+        e.stopPropagation();
+        pageResizeRef.current = { id: pageId, startX: e.clientX, initialDuration: currentDuration };
+        document.addEventListener('mousemove', handlePageResizeMove);
+        document.addEventListener('mouseup', handlePageResizeEnd);
+    };
+    const handlePageResizeMove = (e: MouseEvent) => {
+        if (!pageResizeRef.current) return;
+        const dx = e.clientX - pageResizeRef.current.startX;
+        const deltaSeconds = dx / zoom;
+        const newDuration = Math.max(1, pageResizeRef.current.initialDuration + deltaSeconds);
+        onUpdatePageDuration(pageResizeRef.current.id, newDuration);
+    };
+    const handlePageResizeEnd = () => {
+        pageResizeRef.current = null;
+        document.removeEventListener('mousemove', handlePageResizeMove);
+        document.removeEventListener('mouseup', handlePageResizeEnd);
+    };
+
+    // 3. Scrubbing
+    const handleRulerClick = (e: React.MouseEvent) => {
+        if (!scrollContainerRef.current) return;
+        const rect = scrollContainerRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
+        const time = offsetX / zoom;
+        onScrub(time);
+    };
+
+    // --- PAGE BLOCK RENDER PREP ---
+    let currentX = 0;
+    const pageBlocks = pages.map((page: Page) => {
+        const start = currentX;
+        const width = page.duration * zoom;
+        currentX += width;
+        return { ...page, start, width };
+    });
 
     return (
         <div
-            className="bg-white border-t border-gray-200 flex flex-col z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] relative"
-            style={{ height: height }}
+            className="flex flex-col bg-white border-t border-gray-200 relative select-none"
+            style={{ height }}
         >
-            {/* Drag Handle */}
+            {/* Height Resize Handle */}
             <div
-                className="absolute top-0 left-0 right-0 h-1 cursor-row-resize hover:bg-violet-400 transition-colors z-50"
-                onMouseDown={handleResizeStart}
+                className="absolute top-0 left-0 right-0 h-1 cursor-row-resize hover:bg-violet-500 z-50 bg-gray-200"
+                onMouseDown={handleHeaderResizeStart}
             />
 
-            <div className="h-10 flex items-center justify-between px-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={onTogglePlay}
-                        className={`p-1.5 rounded-full ${isPlaying ? 'bg-red-500 text-white' : 'bg-violet-600 text-white hover:bg-violet-700'}`}
-                    >
+            {/* Toolbar Area */}
+            <div className="h-10 flex items-center justify-between px-4 bg-gray-50 border-b border-gray-200 text-gray-700 text-xs">
+                <div className="flex items-center gap-4">
+                    <button onClick={onTogglePlay} className="hover:text-violet-600">
                         {isPlaying ? (
-                            <Pause size={14} fill="currentColor" />
+                            <Pause size={16} fill="currentColor" />
                         ) : (
-                            <Play size={14} fill="currentColor" />
+                            <Play size={16} fill="currentColor" />
                         )}
                     </button>
-                    <span className="text-xs font-mono text-gray-500">
-                        {currentTime.toFixed(1)}s / {duration}s
-                    </span>
+                    <span>{currentTime.toFixed(1)}s</span>
+                    <div className="h-4 w-px bg-gray-300 mx-2" />
+                    <button className="hover:text-violet-600" onClick={() => onSetZoom(zoom * 0.9)}>
+                        <Minus size={14} />
+                    </button>
+                    {/* Zoom Slider Indicator */}
+                    <div className="w-20 h-1 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-violet-500"
+                            style={{ width: `${(zoom / 200) * 100}%` }}
+                        />
+                    </div>
+                    <button className="hover:text-violet-600" onClick={() => onSetZoom(zoom * 1.1)}>
+                        <Plus size={14} />
+                    </button>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div
-                        className="w-64 h-2 bg-gray-200 rounded-full relative cursor-pointer"
-                        ref={progressBarRef}
-                        onClick={handleScrub}
+                    <button
+                        onClick={onAdd}
+                        className="flex items-center gap-1 hover:text-violet-600"
                     >
-                        <div
-                            className="absolute top-0 left-0 h-full bg-violet-500 rounded-full pointer-events-none"
-                            style={{ width: `${progressBarWidth}%` }}
-                        />
-                        <div
-                            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 bg-white border-2 border-violet-600 rounded-full shadow cursor-pointer hover:scale-110 transition-transform"
-                            style={{ left: `${progressBarWidth}%` }}
-                        />
-                    </div>
+                        <Plus size={14} /> Add Page
+                    </button>
                 </div>
             </div>
-            <div className="flex-1 overflow-x-auto p-4 flex gap-3 items-center custom-scrollbar bg-gray-50/30">
-                {pages.map((page: Page, i: number) => (
-                    <div
-                        key={page.id}
-                        onClick={() => onSelect(page.id)}
-                        className={`group relative flex-shrink-0 h-full aspect-video bg-white rounded-lg border-2 cursor-pointer overflow-hidden transition-all shadow-sm
-                            ${activePageId === page.id ? 'border-violet-600 ring-2 ring-violet-100' : 'border-transparent hover:border-gray-300'}
-                        `}
-                    >
-                        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                            {/* Render Mini Preview */}
-                            <div className="w-full h-full opacity-70 bg-white p-1 pointer-events-none">
-                                <div className="relative w-full h-full overflow-hidden">
-                                    {page.elements.map((el) => (
-                                        <div
-                                            key={el.id}
-                                            style={{
-                                                position: 'absolute',
-                                                left: `${(el.x / CANVAS_WIDTH) * 100}%`,
-                                                top: `${(el.y / CANVAS_HEIGHT) * 100}%`,
-                                                width: `${(el.width / CANVAS_WIDTH) * 100}%`,
-                                                height: `${(el.height / CANVAS_HEIGHT) * 100}%`,
-                                                backgroundColor: el.fill,
-                                                transform: `rotate(${el.rotation}deg)`,
-                                                fontSize: '10px',
-                                                overflow: 'hidden',
-                                            }}
-                                        >
-                                            {el.type === 'text' && el.text}
-                                        </div>
-                                    ))}
+
+            {/* Scrollable Tracks Area */}
+            <div
+                ref={scrollContainerRef}
+                className="flex-1 overflow-x-auto overflow-y-hidden relative custom-scrollbar bg-gray-100"
+            >
+                {/* 1. Ruler Layer */}
+                <div
+                    className="h-6 border-b border-gray-200 sticky top-0 bg-white z-10 cursor-pointer"
+                    style={{ width: totalWidth }}
+                    onClick={handleRulerClick}
+                >
+                    <canvas ref={rulerRef} style={{ width: totalWidth, height: 24 }} />
+                </div>
+
+                {/* 2. Tracks Layer */}
+                <div
+                    className="relative pt-4 px-0"
+                    style={{ width: totalWidth, minHeight: '100%' }}
+                >
+                    {/* Page Blocks Track */}
+                    <div className="h-24 relative mb-2">
+                        {pageBlocks.map((page: any) => (
+                            <div
+                                key={page.id}
+                                className={`absolute top-2 h-20 rounded-md border overflow-hidden group transition-colors
+                                    ${activePageId === page.id ? 'border-violet-500 ring-1 ring-violet-500 z-10' : 'border-gray-300 bg-white hover:border-gray-400'}
+                                `}
+                                style={{
+                                    left: page.start,
+                                    width: page.width,
+                                }}
+                                onClick={() => onSelect(page.id)}
+                            >
+                                {/* Canvas Preview */}
+                                <div className="absolute inset-0 pointer-events-none">
+                                    <PageThumbnail page={page} width={page.width} height={80} />
+                                </div>
+
+                                {/* Label */}
+                                <div className="absolute top-1 left-2 text-[10px] text-gray-500 font-mono truncate max-w-[90%] z-20 mix-blend-multiply font-bold">
+                                    Page {page.id.substr(0, 4)}
+                                </div>
+                                <div className="absolute bottom-1 left-2 text-[9px] text-gray-400 font-mono z-20 mix-blend-multiply">
+                                    {page.duration.toFixed(1)}s
+                                </div>
+
+                                {/* Drag Handle (Right) */}
+                                <div
+                                    className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-violet-100 flex items-center justify-center group/handle z-30"
+                                    onMouseDown={(e) =>
+                                        handlePageResizeStart(e, page.id, page.duration)
+                                    }
+                                >
+                                    <div className="w-1 h-4 bg-gray-300 rounded-full group-hover/handle:bg-violet-400" />
+                                </div>
+
+                                {/* Controls on hover */}
+                                <div className="absolute top-1 right-8 hidden group-hover:flex gap-1 z-20">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete(page.id);
+                                        }}
+                                        className="p-1 bg-white border border-gray-200 text-red-500 rounded hover:bg-red-50"
+                                    >
+                                        <Trash2 size={10} />
+                                    </button>
                                 </div>
                             </div>
-                        </div>
-                        <div className="absolute top-2 left-2 bg-black/50 backdrop-blur text-white text-[10px] px-1.5 rounded">
-                            {i + 1}
-                        </div>
-
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDelete(page.id);
-                                }}
-                                className="p-1.5 bg-white rounded-full text-red-500 shadow-sm hover:scale-110 transition"
-                            >
-                                <Trash2 size={12} />
-                            </button>
-                            <button className="p-1.5 bg-white rounded-full text-gray-700 shadow-sm hover:scale-110 transition">
-                                <Copy size={12} />
-                            </button>
-                        </div>
+                        ))}
                     </div>
-                ))}
-                <button
-                    onClick={onAdd}
-                    className="h-full aspect-[2/3] flex items-center justify-center bg-gray-200/50 hover:bg-gray-200 rounded-lg text-gray-400 hover:text-gray-600 transition-all border-2 border-transparent hover:border-gray-300"
-                >
-                    <Plus size={24} />
-                </button>
+
+                    {/* Playhead Line */}
+                    <div
+                        className="absolute top-0 bottom-0 w-px bg-black z-40 pointer-events-none flex flex-col items-center"
+                        style={{ left: currentTime * zoom }}
+                    >
+                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-gray-800 -mt-0" />
+                        <div className="flex-1 w-0.5 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -1337,6 +1644,61 @@ const App = () => {
 
     const activePage = state.pages.find((p) => p.id === state.activePageId);
 
+    // Calculate start time of current active page to synchronize local animation
+    // If we are on Page 2, and Page 1 is 5s long, Page 2 starts at 5s.
+    let pageStartTime = 0;
+    for (let p of state.pages) {
+        if (p.id === state.activePageId) break;
+        pageStartTime += p.duration;
+    }
+
+    // Auto-switch page based on currentTime
+    useEffect(() => {
+        let accumulated = 0;
+        let targetPageId = null; // Start with null to detect if we found a match
+
+        for (let p of state.pages) {
+            // Check if time falls strictly within this page's window
+            // Use < for end to avoid overlap, >= for start
+            if (state.currentTime >= accumulated && state.currentTime < accumulated + p.duration) {
+                targetPageId = p.id;
+                break; // Found it, stop looking
+            }
+            accumulated += p.duration;
+        }
+
+        // Edge case: End of timeline or loop finished without finding (time >= total duration)
+        if (!targetPageId && state.pages.length > 0) {
+            // Only switch to last page if we are actually past the end
+            if (state.currentTime >= accumulated) {
+                targetPageId = state.pages[state.pages.length - 1].id;
+            }
+        }
+
+        // Only dispatch if we found a valid target and it's different
+        if (targetPageId && targetPageId !== state.activePageId) {
+            dispatch({ type: 'SELECT_PAGE', id: targetPageId });
+        }
+    }, [state.currentTime, state.pages, state.activePageId]);
+
+    // Keyboard Shortcuts (New Page / Duplicate)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Cmd/Ctrl + Option + N : Add New Page
+            if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === 'n') {
+                e.preventDefault();
+                dispatch({ type: 'ADD_PAGE' });
+            }
+            // Cmd/Ctrl + D : Duplicate Page
+            if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+                e.preventDefault(); // Prevent bookmark shortcut
+                dispatch({ type: 'DUPLICATE_PAGE' });
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     useCanvasEngine(
         canvasRef,
         activePage,
@@ -1345,7 +1707,8 @@ const App = () => {
         state.currentTime,
         state.zoom,
         state.pan,
-        dispatch
+        dispatch,
+        pageStartTime
     );
 
     // Playback Loop
@@ -1356,8 +1719,13 @@ const App = () => {
             interval = setInterval(() => {
                 const now = Date.now();
                 const newTime = (now - startTime) / 1000;
-                if (newTime > (activePage?.duration || 5)) {
-                    dispatch({ type: 'NEXT_PAGE' });
+
+                // Total duration
+                const totalDur = state.pages.reduce((a, b) => a + b.duration, 0);
+
+                if (newTime > totalDur) {
+                    dispatch({ type: 'SET_PLAYING', isPlaying: false });
+                    dispatch({ type: 'SET_CURRENT_TIME', time: 0 });
                 } else {
                     dispatch({ type: 'SET_CURRENT_TIME', time: newTime });
                 }
@@ -1365,12 +1733,13 @@ const App = () => {
             }, 1000 / 60);
         }
         return () => clearInterval(interval);
-    }, [state.isPlaying, activePage]);
+    }, [state.isPlaying, state.pages]);
 
     // Global Key & Scroll Handlers (Zoom/Pan)
     useEffect(() => {
         const handleWheel = (e: WheelEvent) => {
-            if (e.ctrlKey || e.metaKey) {
+            // Only handle canvas zoom here, timeline zoom is in Timeline component
+            if ((e.ctrlKey || e.metaKey) && containerRef.current?.contains(e.target as Node)) {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
                 dispatch({
@@ -1379,10 +1748,10 @@ const App = () => {
                 });
             }
         };
-        const container = containerRef.current;
-        if (container) container.addEventListener('wheel', handleWheel, { passive: false });
+        // Add to window to catch global canvas zoom, but verify target
+        window.addEventListener('wheel', handleWheel, { passive: false });
         return () => {
-            if (container) container.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('wheel', handleWheel);
         };
     }, [state.zoom]);
 
@@ -1483,9 +1852,18 @@ const App = () => {
                         activePageId={state.activePageId}
                         isPlaying={state.isPlaying}
                         currentTime={state.currentTime}
-                        duration={activePage?.duration || 5}
                         height={state.timelineHeight}
-                        onSelect={(id: any) => dispatch({ type: 'SELECT_PAGE', id })}
+                        zoom={state.timelineZoom}
+                        onSelect={(id: string) => {
+                            dispatch({ type: 'SELECT_PAGE', id });
+                            // Sync timeline to start of page
+                            let newTime = 0;
+                            for (const p of state.pages) {
+                                if (p.id === id) break;
+                                newTime += p.duration;
+                            }
+                            dispatch({ type: 'SET_CURRENT_TIME', time: newTime });
+                        }}
                         onAdd={() => dispatch({ type: 'ADD_PAGE' })}
                         onDelete={(id: any) => dispatch({ type: 'DELETE_PAGE', id })}
                         onTogglePlay={() =>
@@ -1497,6 +1875,10 @@ const App = () => {
                         }}
                         onResize={(h: number) =>
                             dispatch({ type: 'SET_TIMELINE_HEIGHT', height: h })
+                        }
+                        onSetZoom={(z: number) => dispatch({ type: 'SET_TIMELINE_ZOOM', zoom: z })}
+                        onUpdatePageDuration={(id: string, dur: number) =>
+                            dispatch({ type: 'UPDATE_PAGE_DURATION', id, duration: dur })
                         }
                     />
                 </div>
