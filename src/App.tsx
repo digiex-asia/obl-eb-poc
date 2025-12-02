@@ -7,6 +7,7 @@ import GeminiEditor from './components/GeminiEditor';
 import SkiaEditor from './components/SkiaEditor';
 import EditorComparison from './components/EditorComparison';
 import GraphicEditor from './components/GraphicEditor';
+import RichtextEditor from './components/Richtext/App';
 
 const Navigation = ({ isVisible, onToggle }: { isVisible: boolean; onToggle: () => void }) => {
     return (
@@ -53,6 +54,12 @@ const Navigation = ({ isVisible, onToggle }: { isVisible: boolean; onToggle: () 
                 >
                     Graphic Editor
                 </Link>
+                <Link
+                    to="/richtext"
+                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-50 transition-colors text-blue-600 border border-blue-200"
+                >
+                    Rich Text
+                </Link>
             </nav>
 
             {/* Toggle Button */}
@@ -96,6 +103,7 @@ const App = () => {
                         <Route path="/comparison" element={<EditorComparison />} />
                         <Route path="/skia" element={<SkiaEditor />} />
                         <Route path="/graphic" element={<GraphicEditor />} />
+                        <Route path="/richtext" element={<RichtextEditor />} />
                     </Routes>
                 </div>
             </div>
