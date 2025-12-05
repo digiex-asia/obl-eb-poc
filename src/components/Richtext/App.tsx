@@ -5,6 +5,7 @@ import {
   Eraser,
   Bold,
   Italic,
+  Underline,
   Strikethrough,
   AlignLeft,
   AlignCenter,
@@ -32,6 +33,9 @@ import {
   ClipboardCopy,
   ClipboardPaste,
   Scissors,
+  Undo2,
+  Redo2,
+  CaseSensitive,
 } from 'lucide-react';
 
 // ==========================================
@@ -44,10 +48,13 @@ type Range = { anchor: Point; focus: Point };
 type TextAnimation = 'none' | 'wavy' | 'pulse' | 'rainbow';
 type BlockAnimation = 'none' | 'float' | 'shake';
 
+type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
 type TextLeaf = {
   text: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
   strike?: boolean;
   color?: string;
   backgroundColor?: string;
@@ -55,6 +62,8 @@ type TextLeaf = {
   fontFamily?: string;
   letterSpacing?: number;
   animation?: TextAnimation;
+  shadow?: boolean;
+  textTransform?: TextTransform;
 };
 
 type ElementNode = {
@@ -66,6 +75,7 @@ type ElementNode = {
     | 'numbered-list';
   align?: 'left' | 'center' | 'right';
   lineHeight?: number;
+  paragraphSpacing?: number;
   blockAnimation?: BlockAnimation;
   children: TextLeaf[];
 };
@@ -76,6 +86,7 @@ type TextBox = {
   y: number;
   width: number;
   height?: number;
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   content: ElementNode[];
 };
 
@@ -272,16 +283,23 @@ const StylePlugin = ({ currentStyle, onApply }: PluginProps) => (
     <button
       onClick={() => onApply('bold', !currentStyle.bold)}
       className={`p-2 rounded transition-colors ${currentStyle.bold ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
-      title="Bold"
+      title="Bold (Cmd+B)"
     >
       <Bold size={16} />
     </button>
     <button
       onClick={() => onApply('italic', !currentStyle.italic)}
       className={`p-2 rounded transition-colors ${currentStyle.italic ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
-      title="Italic"
+      title="Italic (Cmd+I)"
     >
       <Italic size={16} />
+    </button>
+    <button
+      onClick={() => onApply('underline', !currentStyle.underline)}
+      className={`p-2 rounded transition-colors ${currentStyle.underline ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
+      title="Underline (Cmd+U)"
+    >
+      <Underline size={16} />
     </button>
     <button
       onClick={() => onApply('strike', !currentStyle.strike)}
@@ -289,6 +307,13 @@ const StylePlugin = ({ currentStyle, onApply }: PluginProps) => (
       title="Strikethrough"
     >
       <Strikethrough size={16} />
+    </button>
+    <button
+      onClick={() => onApply('shadow', !currentStyle.shadow)}
+      className={`p-2 rounded transition-colors ${currentStyle.shadow ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
+      title="Text Shadow"
+    >
+      <span className="text-sm font-bold drop-shadow-md">S</span>
     </button>
   </div>
 );
@@ -503,10 +528,126 @@ const Transforms = {
     }
     node.children = newChildren;
   },
+
+  deleteForward: (content: ElementNode[], at: Range) => {
+    const [start, end] = Editor.edges(at);
+    const pathIndex = start.path[0];
+    const node = content[pathIndex];
+
+    // If there's a selection, delete the range (same as deleteBackward)
+    if (start.offset !== end.offset) {
+      let currentOffset = 0;
+      const newChildren = [];
+      for (const leaf of node.children) {
+        const leafStart = currentOffset;
+        const leafEnd = currentOffset + leaf.text.length;
+
+        if (leafEnd <= start.offset || leafStart >= end.offset) {
+          newChildren.push(leaf);
+        } else {
+          const keepStart =
+            leafStart < start.offset
+              ? leaf.text.slice(0, start.offset - leafStart)
+              : '';
+          const keepEnd =
+            leafEnd > end.offset ? leaf.text.slice(end.offset - leafStart) : '';
+          if (keepStart || keepEnd) {
+            newChildren.push({ ...leaf, text: keepStart + keepEnd });
+          }
+        }
+        currentOffset += leaf.text.length;
+      }
+      if (newChildren.length === 0)
+        newChildren.push({ ...node.children[0], text: '' });
+      node.children = newChildren;
+      return { anchor: start, focus: start };
+    }
+
+    // Delete character AFTER cursor (forward delete)
+    let currentOffset = 0;
+    for (let i = 0; i < node.children.length; i++) {
+      const leaf = node.children[i];
+      const len = leaf.text.length;
+
+      if (start.offset >= currentOffset && start.offset < currentOffset + len) {
+        const leafOffset = start.offset - currentOffset;
+        const before = leaf.text.slice(0, leafOffset);
+        const after = leaf.text.slice(leafOffset + 1);
+        leaf.text = before + after;
+
+        if (leaf.text === '' && node.children.length > 1) {
+          node.children.splice(i, 1);
+        }
+
+        // Cursor stays in same position
+        return { anchor: start, focus: start };
+      }
+      currentOffset += len;
+    }
+    return at;
+  },
+
+  getTotalLength: (content: ElementNode[], pathIndex: number) => {
+    const node = content[pathIndex];
+    if (!node) return 0;
+    return node.children.reduce((sum, leaf) => sum + leaf.text.length, 0);
+  },
 };
 
 // ==========================================
-// 4. MAIN COMPONENT
+// 4. HISTORY HOOK (Undo/Redo)
+// ==========================================
+
+function useHistory<T>(initialState: T) {
+  const [history, setHistory] = useState<T[]>([initialState]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const setState = useCallback(
+    (newStateOrUpdater: T | ((prev: T) => T)) => {
+      setHistory(prev => {
+        const currentState = prev[currentIndex];
+        const newState =
+          typeof newStateOrUpdater === 'function'
+            ? (newStateOrUpdater as (prev: T) => T)(currentState)
+            : newStateOrUpdater;
+        const newHistory = prev.slice(0, currentIndex + 1);
+        return [...newHistory, newState];
+      });
+      setCurrentIndex(prev => prev + 1);
+    },
+    [currentIndex]
+  );
+
+  const undo = useCallback(() => {
+    if (currentIndex > 0) {
+      const newIndex = currentIndex - 1;
+      setCurrentIndex(newIndex);
+      return history[newIndex];
+    }
+    return null;
+  }, [history, currentIndex]);
+
+  const redo = useCallback(() => {
+    if (currentIndex < history.length - 1) {
+      const newIndex = currentIndex + 1;
+      setCurrentIndex(newIndex);
+      return history[newIndex];
+    }
+    return null;
+  }, [history, currentIndex]);
+
+  return {
+    state: history[currentIndex],
+    setState,
+    undo,
+    redo,
+    canUndo: currentIndex > 0,
+    canRedo: currentIndex < history.length - 1,
+  };
+}
+
+// ==========================================
+// 5. MAIN COMPONENT
 // ==========================================
 
 const DEFAULT_FONT_SIZE = 16;
@@ -515,6 +656,7 @@ const PADDING = 10;
 const CURSOR_COLOR = '#2563eb';
 const SELECTION_COLOR = 'rgba(37, 99, 235, 0.3)';
 const HANDLE_SIZE = 8;
+const CLICK_TIMEOUT = 300; // ms for multi-click detection
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -522,8 +664,17 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animationRef = useRef<number>();
   const lastInputTime = useRef<number>(Date.now()); // For blinking cursor
+  const clickTracker = useRef({ count: 0, lastTime: 0, x: 0, y: 0 });
 
-  const [textBoxes, setTextBoxes] = useState<TextBox[]>([
+  // Use history for undo/redo
+  const {
+    state: textBoxes,
+    setState: setTextBoxes,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<TextBox[]>([
     {
       id: 'box-1',
       x: 50,
@@ -612,10 +763,14 @@ export default function App() {
     backgroundColor: 'transparent',
     bold: false,
     italic: false,
+    underline: false,
+    strike: false,
     letterSpacing: 0,
     lineHeight: 1.5,
     animation: 'none',
     blockAnimation: 'none',
+    shadow: false,
+    textTransform: 'none',
   });
 
   const layoutMap = useRef<
@@ -652,11 +807,14 @@ export default function App() {
             backgroundColor: leaf.backgroundColor || 'transparent',
             bold: leaf.bold || false,
             italic: leaf.italic || false,
+            underline: leaf.underline || false,
             strike: leaf.strike || false,
             letterSpacing: leaf.letterSpacing || 0,
             lineHeight: node.lineHeight || 1.5,
             animation: leaf.animation || 'none',
             blockAnimation: node.blockAnimation || 'none',
+            shadow: leaf.shadow || false,
+            textTransform: leaf.textTransform || 'none',
           });
           break;
         }
@@ -760,7 +918,8 @@ export default function App() {
         currentY += lineHeight;
       }
 
-      currentY += 10;
+      // Add paragraph spacing after each block
+      currentY += node.paragraphSpacing ?? 10;
       lines.push(...nodeLines);
     });
     layoutMap.current[box.id] = { lines, height: currentY + PADDING };
@@ -845,12 +1004,23 @@ export default function App() {
         return;
       }
 
+      // Calculate vertical alignment offset
+      let verticalOffset = 0;
+      if (box.height && box.verticalAlign) {
+        const contentHeight = layout.height - PADDING * 2;
+        if (box.verticalAlign === 'middle') {
+          verticalOffset = (box.height - contentHeight) / 2 - PADDING;
+        } else if (box.verticalAlign === 'bottom') {
+          verticalOffset = box.height - contentHeight - PADDING * 2;
+        }
+      }
+
       layout.lines.forEach(line => {
         const blockNode = box.content[line.path[0]];
         let lineOffsetX = 0;
-        let lineOffsetY = 0;
+        let lineOffsetY = verticalOffset;
         if (blockNode.blockAnimation === 'float')
-          lineOffsetY = Math.sin(time / 500 + line.path[0]) * 5;
+          lineOffsetY += Math.sin(time / 500 + line.path[0]) * 5;
         if (blockNode.blockAnimation === 'shake')
           lineOffsetX = Math.sin(time / 50 + line.path[0]) * 2;
 
@@ -909,15 +1079,58 @@ export default function App() {
           const textY =
             line.y + (line.height - drawSize) / 2 + lineOffsetY + drawOffsetY;
           ctx.textBaseline = 'top';
-          ctx.fillText(charData.char, charData.x + lineOffsetX, textY);
 
-          if (s.strike)
+          // Apply text transform
+          let displayChar = charData.char;
+          if (s.textTransform === 'uppercase')
+            displayChar = charData.char.toUpperCase();
+          else if (s.textTransform === 'lowercase')
+            displayChar = charData.char.toLowerCase();
+          else if (
+            s.textTransform === 'capitalize' &&
+            charData.charIndexInLeaf === 0
+          )
+            displayChar = charData.char.toUpperCase();
+
+          // Apply shadow if enabled
+          if (s.shadow) {
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+          }
+
+          ctx.fillText(displayChar, charData.x + lineOffsetX, textY);
+
+          // Reset shadow
+          if (s.shadow) {
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+          }
+
+          // Draw underline
+          if (s.underline) {
+            ctx.fillStyle = drawColor;
+            ctx.fillRect(
+              charData.x + lineOffsetX,
+              textY + drawSize * 1.05,
+              charData.width,
+              Math.max(1, drawSize / 15)
+            );
+          }
+
+          // Draw strikethrough
+          if (s.strike) {
+            ctx.fillStyle = drawColor;
             ctx.fillRect(
               charData.x + lineOffsetX,
               textY + drawSize / 2,
               charData.width,
-              1
+              Math.max(1, drawSize / 15)
             );
+          }
         });
       });
 
@@ -1115,6 +1328,68 @@ export default function App() {
     return { path: line.path, offset: abs + char.charIndexInLeaf + delta };
   };
 
+  // Helper to get word boundaries at a given offset
+  const getWordBoundaries = (
+    box: TextBox,
+    pathIndex: number,
+    offset: number
+  ) => {
+    const node = box.content[pathIndex];
+    if (!node) return { start: offset, end: offset };
+
+    let fullText = '';
+    for (const leaf of node.children) {
+      fullText += leaf.text;
+    }
+
+    // Find word start (scan backwards)
+    let start = offset;
+    while (start > 0 && /\w/.test(fullText[start - 1])) {
+      start--;
+    }
+
+    // Find word end (scan forwards)
+    let end = offset;
+    while (end < fullText.length && /\w/.test(fullText[end])) {
+      end++;
+    }
+
+    return { start, end };
+  };
+
+  // Helper to get line boundaries at a given offset
+  const getLineBoundaries = (
+    box: TextBox,
+    pathIndex: number,
+    offset: number
+  ) => {
+    const layout = layoutMap.current[box.id];
+    if (!layout) return { start: offset, end: offset };
+
+    const node = box.content[pathIndex];
+    if (!node) return { start: offset, end: offset };
+
+    // Find the line containing this offset
+    for (const line of layout.lines) {
+      if (line.path[0] !== pathIndex) continue;
+      if (line.chars.length === 0) continue;
+
+      const firstChar = line.chars[0];
+      let lineStart = 0;
+      for (let k = 0; k < firstChar.leafIndex; k++) {
+        lineStart += node.children[k].text.length;
+      }
+      lineStart += firstChar.charIndexInLeaf;
+      const lineEnd = lineStart + line.chars.length;
+
+      if (offset >= lineStart && offset <= lineEnd) {
+        return { start: lineStart, end: lineEnd };
+      }
+    }
+
+    return { start: offset, end: offset };
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
@@ -1164,10 +1439,68 @@ export default function App() {
           h: hitBox.height || 0,
         });
       } else {
-        setDragMode('select');
-        setDragStart({ x: mx, y: my }); // Required for drag selection to work
+        // Multi-click detection
+        const now = Date.now();
+        const tracker = clickTracker.current;
+        const distance = Math.sqrt(
+          Math.pow(mx - tracker.x, 2) + Math.pow(my - tracker.y, 2)
+        );
+
+        if (now - tracker.lastTime < CLICK_TIMEOUT && distance < 10) {
+          tracker.count = (tracker.count % 4) + 1;
+        } else {
+          tracker.count = 1;
+        }
+        tracker.lastTime = now;
+        tracker.x = mx;
+        tracker.y = my;
+
         const pt = hitTestChar(hitBox, mx, my);
-        if (pt) setSelection({ anchor: pt, focus: pt });
+        if (pt) {
+          const pathIndex = pt.path[0];
+
+          if (tracker.count === 1) {
+            // Single click - position cursor
+            setDragMode('select');
+            setDragStart({ x: mx, y: my });
+            setSelection({ anchor: pt, focus: pt });
+          } else if (tracker.count === 2) {
+            // Double click - select word
+            const { start, end } = getWordBoundaries(
+              hitBox,
+              pathIndex,
+              pt.offset
+            );
+            setSelection({
+              anchor: { path: [pathIndex], offset: start },
+              focus: { path: [pathIndex], offset: end },
+            });
+            setDragMode('none');
+          } else if (tracker.count === 3) {
+            // Triple click - select line
+            const { start, end } = getLineBoundaries(
+              hitBox,
+              pathIndex,
+              pt.offset
+            );
+            setSelection({
+              anchor: { path: [pathIndex], offset: start },
+              focus: { path: [pathIndex], offset: end },
+            });
+            setDragMode('none');
+          } else if (tracker.count === 4) {
+            // Quad click - select all
+            const totalLen = Transforms.getTotalLength(
+              hitBox.content,
+              pathIndex
+            );
+            setSelection({
+              anchor: { path: [pathIndex], offset: 0 },
+              focus: { path: [pathIndex], offset: totalLen },
+            });
+            setDragMode('none');
+          }
+        }
         inputRef.current?.focus();
       }
     } else {
@@ -1214,7 +1547,7 @@ export default function App() {
     if (dragMode === 'none' || !activeBoxId || !dragStart) return;
     if (dragMode !== 'select' && !initialBoxState) return;
 
-    if (dragMode === 'move-box') {
+    if (dragMode === 'move-box' && initialBoxState) {
       const dx = mx - dragStart.x;
       const dy = my - dragStart.y;
       setTextBoxes(p =>
@@ -1306,8 +1639,55 @@ export default function App() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!activeBoxId) return;
     const { key } = e;
+    const isMeta = e.metaKey || e.ctrlKey;
 
     lastInputTime.current = Date.now(); // Reset Blink
+
+    // Undo (Cmd/Ctrl + Z)
+    if (isMeta && !e.shiftKey && (key === 'z' || key === 'Z')) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+
+    // Redo (Cmd/Ctrl + Shift + Z)
+    if (isMeta && e.shiftKey && (key === 'z' || key === 'Z')) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+
+    // Keyboard shortcuts for formatting (Cmd/Ctrl + B/I/U)
+    if (isMeta && (key === 'b' || key === 'B')) {
+      e.preventDefault();
+      applyStyle('bold', !currentStyle.bold);
+      return;
+    }
+    if (isMeta && (key === 'i' || key === 'I')) {
+      e.preventDefault();
+      applyStyle('italic', !currentStyle.italic);
+      return;
+    }
+    if (isMeta && (key === 'u' || key === 'U')) {
+      e.preventDefault();
+      applyStyle('underline', !currentStyle.underline);
+      return;
+    }
+
+    // Select All (Cmd/Ctrl + A)
+    if (isMeta && (key === 'a' || key === 'A')) {
+      e.preventDefault();
+      const box = textBoxes.find(b => b.id === activeBoxId);
+      if (box) {
+        const pathIndex = selection.focus.path[0];
+        const totalLen = Transforms.getTotalLength(box.content, pathIndex);
+        setSelection({
+          anchor: { path: [pathIndex], offset: 0 },
+          focus: { path: [pathIndex], offset: totalLen },
+        });
+      }
+      return;
+    }
 
     // Handle Home/End for Line navigation
     if (key === 'Home' || key === 'End') {
@@ -1343,7 +1723,6 @@ export default function App() {
 
           if (line.chars.length > 0) {
             const first = line.chars[0];
-            const last = line.chars[line.chars.length - 1];
             for (let k = 0; k < first.leafIndex; k++)
               absStart += node.children[k].text.length;
             absStart += first.charIndexInLeaf;
@@ -1373,6 +1752,8 @@ export default function App() {
 
       if (key === 'Backspace') {
         newSel = Transforms.deleteBackward(newContent, selection);
+      } else if (key === 'Delete') {
+        newSel = Transforms.deleteForward(newContent, selection);
       } else if (key.length === 1 && !e.ctrlKey && !e.metaKey) {
         newSel = Transforms.insertText(newContent, key, selection);
       } else if (key === 'ArrowLeft') {
@@ -1444,6 +1825,26 @@ export default function App() {
     <div className="flex flex-col h-screen bg-gray-100 font-sans text-gray-700 select-none">
       {/* TOOLBAR */}
       <div className="bg-white border-b border-gray-300 p-2 flex flex-wrap gap-4 items-center shadow-sm z-10">
+        {/* UNDO/REDO */}
+        <div className="flex gap-1 items-center border-r border-gray-200 pr-2">
+          <button
+            onClick={() => undo()}
+            disabled={!canUndo}
+            className={`p-2 rounded transition-colors ${canUndo ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}
+            title="Undo (Cmd+Z)"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            onClick={() => redo()}
+            disabled={!canRedo}
+            className={`p-2 rounded transition-colors ${canRedo ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}
+            title="Redo (Cmd+Shift+Z)"
+          >
+            <Redo2 size={16} />
+          </button>
+        </div>
+
         <FontPlugin currentStyle={currentStyle} onApply={applyStyle} />
         <ColorPlugin currentStyle={currentStyle} onApply={applyStyle} />
         <SpacingPlugin currentStyle={currentStyle} onApply={applyStyle} />
