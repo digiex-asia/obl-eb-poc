@@ -3,12 +3,22 @@
  * Main component that orchestrates all plugins and core functionality
  */
 
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
 import { TextElement, PluginContext } from './types';
 import { STAGE_WIDTH, STAGE_HEIGHT, CLICK_TIMEOUT } from './core/constants';
 import { generateId } from './core/utils';
 import { useHistory } from './core/history';
-import { deleteTextRange, insertTextAt, applyStyleToRange } from './core/textManipulation';
+import {
+  deleteTextRange,
+  insertTextAt,
+  applyStyleToRange,
+} from './core/textManipulation';
 import { TextLayoutEngine } from './core/layoutEngine';
 import { pluginRegistry } from './core/pluginSystem';
 import { registerAllPlugins } from './plugins';
@@ -18,39 +28,66 @@ import { MainToolbar, ElementToolbar } from './Toolbar';
 // Initial State
 const INITIAL_DATA: TextElement[] = [
   {
-    id: "text-1",
-    type: "RICH_TEXT",
+    id: 'text-1',
+    type: 'RICH_TEXT',
     x: 50,
     y: 80,
     width: 400,
     height: 250,
     isEditing: false,
     autoFit: false,
-    verticalAlign: 'top', 
+    verticalAlign: 'top',
     listType: 'none',
     listIndent: 0,
     defaultStyle: {
       fontSize: 24,
-      fontFamily: "Arial",
-      fill: "#333333",
-      align: "left",
+      fontFamily: 'Arial',
+      fill: '#333333',
+      align: 'left',
       isBold: false,
       isItalic: false,
       isUnderline: false,
       isStrike: false,
-      backgroundColor: null, 
+      backgroundColor: null,
       lineHeight: 1.2,
       letterSpacing: 0,
       paragraphSpacing: 10,
-      textTransform: 'none', 
-      shadow: false
+      textTransform: 'none',
+      shadow: false,
     },
     valueList: [
-      { text: "Rich Text Editor\n", fontSize: 28, fontFamily: "Arial", fill: "#333333", isBold: true },
-      { text: "Features Implemented:\n", fontSize: 20, fontFamily: "Arial", fill: "#666666" },
-      { text: "Auto Fit Text\n", fontSize: 20, fontFamily: "Arial", fill: "#333333" },
-      { text: "Vertical Align\n", fontSize: 20, fontFamily: "Arial", fill: "#333333" },
-      { text: "Nested Lists Support", fontSize: 20, fontFamily: "Arial", fill: "#333333", isUnderline: true },
+      {
+        text: 'Rich Text Editor\n',
+        fontSize: 28,
+        fontFamily: 'Arial',
+        fill: '#333333',
+        isBold: true,
+      },
+      {
+        text: 'Features Implemented:\n',
+        fontSize: 20,
+        fontFamily: 'Arial',
+        fill: '#666666',
+      },
+      {
+        text: 'Auto Fit Text\n',
+        fontSize: 20,
+        fontFamily: 'Arial',
+        fill: '#333333',
+      },
+      {
+        text: 'Vertical Align\n',
+        fontSize: 20,
+        fontFamily: 'Arial',
+        fill: '#333333',
+      },
+      {
+        text: 'Nested Lists Support',
+        fontSize: 20,
+        fontFamily: 'Arial',
+        fill: '#333333',
+        isUnderline: true,
+      },
     ],
   },
 ];
@@ -58,7 +95,8 @@ const INITIAL_DATA: TextElement[] = [
 export default function CanvasRichTextEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  
+  const dprRef = useRef(window.devicePixelRatio || 1);
+
   // Register plugins on mount
   useEffect(() => {
     registerAllPlugins();
@@ -66,17 +104,23 @@ export default function CanvasRichTextEditor() {
       pluginRegistry.cleanupAll();
     };
   }, []);
-  
+
   // Use History Hook
-  const { 
-    state: elements, 
-    setState: setElements, 
-    undo, redo, canUndo, canRedo 
+  const {
+    state: elements,
+    setState: setElements,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useHistory<TextElement[]>(INITIAL_DATA);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [viewportSize, setViewportSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [viewportSize, setViewportSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
   const [dragInfo, setDragInfo] = useState<{
     isDragging: boolean;
     startX: number;
@@ -86,8 +130,15 @@ export default function CanvasRichTextEditor() {
     originalWidth?: number;
     originalHeight?: number;
     type: string;
-  }>({ isDragging: false, startX: 0, startY: 0, originalX: 0, originalY: 0, type: 'none' });
-  
+  }>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    originalX: 0,
+    originalY: 0,
+    type: 'none',
+  });
+
   const selectionRef = useRef({ start: 0, end: 0 });
   const [selection, setSelectionState] = useState({ start: 0, end: 0 });
   const setSelection = (newSel: { start: number; end: number }) => {
@@ -98,92 +149,176 @@ export default function CanvasRichTextEditor() {
   const [blinkVisible, setBlinkVisible] = useState(true);
   const clickTracker = useRef({ count: 0, lastTime: 0, x: 0, y: 0 });
 
-  const activeElement = useMemo(() => elements.find(el => el.id === selectedId) ?? null, [elements, selectedId]);
-  const activeFullText = useMemo(() => activeElement ? activeElement.valueList.map(v => v.text).join("") : "", [activeElement]);
-  
+  const activeElement = useMemo(
+    () => elements.find(el => el.id === selectedId) ?? null,
+    [elements, selectedId]
+  );
+  const activeFullText = useMemo(
+    () =>
+      activeElement ? activeElement.valueList.map(v => v.text).join('') : '',
+    [activeElement]
+  );
+
   const currentStyleAtCursor = useMemo(() => {
     if (!activeElement || !activeElement._layout) return null;
     let indexToCheck = Math.max(0, selection.end - 1);
-    const charPos = activeElement._layout.charPositions.find((c: any) => c.index === indexToCheck);
+    const charPos = activeElement._layout.charPositions.find(
+      (c: any) => c.index === indexToCheck
+    );
     return charPos ? charPos.style : activeElement.defaultStyle;
   }, [activeElement, selection.end]);
 
   const handleStyleUpdate = (key: string, val: any) => {
     if (!activeElement) return;
-    setElements(elements.map(el => {
-      if (el.id !== selectedId) return el;
-      
-      if (['autoFit', 'paragraphSpacing', 'verticalAlign', 'align', 'listType', 'listIndent'].includes(key)) {
-        let newEl = { ...el, [key]: val };
-        
-        if (['align', 'paragraphSpacing'].includes(key)) {
-          newEl.defaultStyle = { ...newEl.defaultStyle, [key]: val };
-        }
-        
-        if (key === 'verticalAlign') newEl.verticalAlign = val;
+    setElements(
+      elements.map(el => {
+        if (el.id !== selectedId) return el;
 
-        if (key === 'autoFit' && val === true) {
+        if (
+          [
+            'autoFit',
+            'paragraphSpacing',
+            'verticalAlign',
+            'align',
+            'listType',
+            'listIndent',
+          ].includes(key)
+        ) {
+          let newEl = { ...el, [key]: val };
+
+          if (['align', 'paragraphSpacing'].includes(key)) {
+            newEl.defaultStyle = { ...newEl.defaultStyle, [key]: val };
+          }
+
+          if (key === 'verticalAlign') newEl.verticalAlign = val;
+
+          if (key === 'autoFit' && val === true) {
+            const ctx = canvasRef.current?.getContext('2d');
+            if (!ctx) return newEl;
+            if (!newEl.height || newEl.height < 50)
+              newEl.height = newEl._renderHeight || 100;
+            const containerProps = {
+              align: newEl.defaultStyle.align,
+              paragraphSpacing: newEl.defaultStyle.paragraphSpacing,
+              listType: newEl.listType,
+              listIndent: newEl.listIndent,
+              defaultStyle: newEl.defaultStyle,
+            };
+            const optimalSize = TextLayoutEngine.calculateOptimalFontSize(
+              ctx,
+              newEl.valueList,
+              newEl.width,
+              newEl.height,
+              containerProps
+            );
+            newEl.valueList = newEl.valueList.map(v => ({
+              ...v,
+              fontSize: optimalSize,
+            }));
+            newEl.defaultStyle = {
+              ...newEl.defaultStyle,
+              fontSize: optimalSize,
+            };
+          }
+
+          return newEl;
+        }
+
+        const needsRefit =
+          el.autoFit &&
+          [
+            'fontFamily',
+            'isBold',
+            'isItalic',
+            'letterSpacing',
+            'lineHeight',
+            'textTransform',
+          ].includes(key);
+
+        let updatedEl = { ...el };
+        const { start, end } = selectionRef.current;
+
+        if (start !== end) {
+          const min = Math.min(start, end);
+          const max = Math.max(start, end);
+          updatedEl.valueList = applyStyleToRange(
+            el.valueList,
+            min,
+            max,
+            key,
+            val
+          );
+        } else {
+          updatedEl.defaultStyle = { ...el.defaultStyle, [key]: val };
+          updatedEl.valueList = updatedEl.valueList.map(v => ({
+            ...v,
+            [key]: val,
+          }));
+        }
+
+        if (needsRefit) {
           const ctx = canvasRef.current?.getContext('2d');
-          if (!ctx) return newEl;
-          if (!newEl.height || newEl.height < 50) newEl.height = newEl._renderHeight || 100;
-          const containerProps = { align: newEl.defaultStyle.align, paragraphSpacing: newEl.defaultStyle.paragraphSpacing, listType: newEl.listType, listIndent: newEl.listIndent, defaultStyle: newEl.defaultStyle };
-          const optimalSize = TextLayoutEngine.calculateOptimalFontSize(ctx, newEl.valueList, newEl.width, newEl.height, containerProps);
-          newEl.valueList = newEl.valueList.map(v => ({...v, fontSize: optimalSize}));
-          newEl.defaultStyle = {...newEl.defaultStyle, fontSize: optimalSize};
+          if (!ctx) return updatedEl;
+          const containerProps = {
+            align: updatedEl.defaultStyle.align,
+            paragraphSpacing: updatedEl.defaultStyle.paragraphSpacing,
+            listType: updatedEl.listType,
+            listIndent: updatedEl.listIndent,
+            defaultStyle: updatedEl.defaultStyle,
+          };
+          const optimalSize = TextLayoutEngine.calculateOptimalFontSize(
+            ctx,
+            updatedEl.valueList,
+            updatedEl.width,
+            updatedEl.height,
+            containerProps
+          );
+          updatedEl.valueList = updatedEl.valueList.map(v => ({
+            ...v,
+            fontSize: optimalSize,
+          }));
+          updatedEl.defaultStyle = {
+            ...updatedEl.defaultStyle,
+            fontSize: optimalSize,
+          };
         }
 
-        return newEl;
-      }
-      
-      const needsRefit = el.autoFit && ['fontFamily', 'isBold', 'isItalic', 'letterSpacing', 'lineHeight', 'textTransform'].includes(key);
-
-      let updatedEl = { ...el };
-      const { start, end } = selectionRef.current;
-      
-      if (start !== end) {
-        const min = Math.min(start, end);
-        const max = Math.max(start, end);
-        updatedEl.valueList = applyStyleToRange(el.valueList, min, max, key, val);
-      } else {
-        updatedEl.defaultStyle = { ...el.defaultStyle, [key]: val };
-        updatedEl.valueList = updatedEl.valueList.map(v => ({
-          ...v,
-          [key]: val
-        }));
-      }
-
-      if (needsRefit) {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return updatedEl;
-        const containerProps = { align: updatedEl.defaultStyle.align, paragraphSpacing: updatedEl.defaultStyle.paragraphSpacing, listType: updatedEl.listType, listIndent: updatedEl.listIndent, defaultStyle: updatedEl.defaultStyle };
-        const optimalSize = TextLayoutEngine.calculateOptimalFontSize(ctx, updatedEl.valueList, updatedEl.width, updatedEl.height, containerProps);
-        updatedEl.valueList = updatedEl.valueList.map(v => ({...v, fontSize: optimalSize}));
-        updatedEl.defaultStyle = {...updatedEl.defaultStyle, fontSize: optimalSize};
-      }
-
-      return updatedEl;
-    }));
+        return updatedEl;
+      })
+    );
   };
 
   // Wrapper for setElements to support both direct value and updater function
-  const setElementsWrapper = useCallback((newElements: TextElement[] | ((prev: TextElement[]) => TextElement[])) => {
-    if (typeof newElements === 'function') {
-      setElements(newElements(elements));
-    } else {
-      setElements(newElements);
-    }
-  }, [elements, setElements]);
+  const setElementsWrapper = useCallback(
+    (newElements: TextElement[] | ((prev: TextElement[]) => TextElement[])) => {
+      if (typeof newElements === 'function') {
+        setElements(newElements(elements));
+      } else {
+        setElements(newElements);
+      }
+    },
+    [elements, setElements]
+  );
 
   // Plugin Context
-  const pluginContext: PluginContext = useMemo(() => ({
-    activeElement,
-    currentStyle: currentStyleAtCursor,
-    selection: selectionRef.current,
-    elements,
-    setElements: setElementsWrapper,
-    onUpdateStyle: handleStyleUpdate,
-    canvasRef
-  }), [activeElement, currentStyleAtCursor, elements, selection, setElementsWrapper]);
+  const pluginContext: PluginContext = useMemo(
+    () => ({
+      activeElement,
+      currentStyle: currentStyleAtCursor,
+      selection: selectionRef.current,
+      elements,
+      setElements: setElementsWrapper,
+      onUpdateStyle: handleStyleUpdate,
+      canvasRef,
+    }),
+    [
+      activeElement,
+      currentStyleAtCursor,
+      elements,
+      selection,
+      setElementsWrapper,
+    ]
+  );
 
   // Initialize plugins with context
   useEffect(() => {
@@ -201,15 +336,15 @@ export default function CanvasRichTextEditor() {
     const handleResize = () => {
       setViewportSize({ width: window.innerWidth, height: window.innerHeight });
     };
-    
+
     const handleScroll = () => {
       // Trigger recalculation on scroll by updating viewport size
       setViewportSize(prev => ({ ...prev }));
     };
-    
+
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleScroll, true);
-    
+
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', handleScroll, true);
@@ -222,15 +357,33 @@ export default function CanvasRichTextEditor() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
+    // Handle high DPI displays
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr !== dprRef.current || canvas.width !== STAGE_WIDTH * dpr) {
+      dprRef.current = dpr;
+      canvas.width = STAGE_WIDTH * dpr;
+      canvas.height = STAGE_HEIGHT * dpr;
+      canvas.style.width = `${STAGE_WIDTH}px`;
+      canvas.style.height = `${STAGE_HEIGHT}px`;
+    }
+    // Reset transform each frame for safe DPI scaling
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
     ctx.clearRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
-    
+
     // Grid Background
     ctx.strokeStyle = '#f0f0f0';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for(let i=0; i<STAGE_WIDTH; i+=20) { ctx.moveTo(i, 0); ctx.lineTo(i, STAGE_HEIGHT); }
-    for(let i=0; i<STAGE_HEIGHT; i+=20) { ctx.moveTo(0, i); ctx.lineTo(STAGE_WIDTH, i); }
+    for (let i = 0; i < STAGE_WIDTH; i += 20) {
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, STAGE_HEIGHT);
+    }
+    for (let i = 0; i < STAGE_HEIGHT; i += 20) {
+      ctx.moveTo(0, i);
+      ctx.lineTo(STAGE_WIDTH, i);
+    }
     ctx.stroke();
 
     elements.forEach(el => {
@@ -239,19 +392,24 @@ export default function CanvasRichTextEditor() {
         paragraphSpacing: el.defaultStyle.paragraphSpacing,
         listType: el.listType,
         listIndent: el.listIndent,
-        defaultStyle: el.defaultStyle
+        defaultStyle: el.defaultStyle,
       };
 
-      const layout = TextLayoutEngine.calculateLayout(ctx, el.valueList, el.width, containerProps);
+      const layout = TextLayoutEngine.calculateLayout(
+        ctx,
+        el.valueList,
+        el.width,
+        containerProps
+      );
       el._renderHeight = layout.totalHeight;
-      el._layout = layout; 
-      
+      el._layout = layout;
+
       let startY = el.y;
       if (el.autoFit) {
         if (el.verticalAlign === 'middle') {
           startY += (el.height - layout.totalHeight) / 2;
         } else if (el.verticalAlign === 'bottom') {
-          startY += (el.height - layout.totalHeight);
+          startY += el.height - layout.totalHeight;
         }
       }
 
@@ -270,15 +428,20 @@ export default function CanvasRichTextEditor() {
         if (start !== end) {
           const min = Math.min(start, end);
           const max = Math.max(start, end);
-          ctx.fillStyle = "rgba(59, 130, 246, 0.2)"; 
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
           layout.charPositions.forEach((charPos: any) => {
             if (charPos.index >= min && charPos.index < max) {
-              ctx.fillRect(charPos.x, charPos.y, charPos.width + 0.5, charPos.height);
+              ctx.fillRect(
+                charPos.x,
+                charPos.y,
+                charPos.width + 0.5,
+                charPos.height
+              );
             }
           });
         }
       }
-      
+
       // Draw List Markers
       layout.listMarkers.forEach((marker: any) => {
         ctx.font = `bold ${marker.fontSize}px ${marker.fontFamily}`;
@@ -289,26 +452,30 @@ export default function CanvasRichTextEditor() {
       // Draw Text with Shadows
       layout.charPositions.forEach((charPos: any) => {
         const style = charPos.style;
-        const fontStyle = style.isItalic ? "italic" : "normal";
-        const fontWeight = style.isBold ? "bold" : "normal";
+        const fontStyle = style.isItalic ? 'italic' : 'normal';
+        const fontWeight = style.isBold ? 'bold' : 'normal';
         ctx.font = `${fontStyle} ${fontWeight} ${style.fontSize}px ${style.fontFamily}`;
-        
+
         if (style.shadow) {
-          ctx.shadowColor = "rgba(0,0,0,0.5)";
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
           ctx.shadowBlur = 4;
           ctx.shadowOffsetX = 2;
           ctx.shadowOffsetY = 2;
         } else {
-          ctx.shadowColor = "transparent";
+          ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
         }
 
         ctx.fillStyle = style.fill;
-        ctx.fillText(charPos.char, charPos.x, charPos.y + charPos.fontSize * 0.9);
-        
-        ctx.shadowColor = "transparent";
+        ctx.fillText(
+          charPos.char,
+          charPos.x,
+          charPos.y + charPos.fontSize * 0.9
+        );
+
+        ctx.shadowColor = 'transparent';
       });
 
       // Draw Decorations
@@ -316,9 +483,9 @@ export default function CanvasRichTextEditor() {
         ctx.beginPath();
         ctx.strokeStyle = dec.color;
         ctx.lineWidth = Math.max(1, dec.fontSize / 15);
-        
+
         if (dec.type === 'underline') {
-          const y = dec.y + dec.fontSize * 1.05; 
+          const y = dec.y + dec.fontSize * 1.05;
           ctx.moveTo(dec.x, y);
           ctx.lineTo(dec.x + dec.width, y);
         } else if (dec.type === 'line-through') {
@@ -331,50 +498,74 @@ export default function CanvasRichTextEditor() {
 
       // Cursor
       if (isEditing && selectedId === el.id && blinkVisible) {
-        let cursorX = 0, cursorY = 0, cursorHeight = 24;
-        const cursorIndex = selection.end; 
-        const charPos = layout.charPositions.find((c: any) => c.index === cursorIndex);
-        
+        let cursorX = 0,
+          cursorY = 0,
+          cursorHeight = 24;
+        const cursorIndex = selection.end;
+        const charPos = layout.charPositions.find(
+          (c: any) => c.index === cursorIndex
+        );
+
         if (charPos) {
-          cursorX = charPos.x; cursorY = charPos.y; cursorHeight = charPos.height; 
+          cursorX = charPos.x;
+          cursorY = charPos.y;
+          cursorHeight = charPos.height;
         } else {
-          const lastChar = layout.charPositions[layout.charPositions.length - 1];
+          const lastChar =
+            layout.charPositions[layout.charPositions.length - 1];
           if (cursorIndex >= layout.totalLength && lastChar) {
-            cursorX = lastChar.x + lastChar.width; cursorY = lastChar.y; cursorHeight = lastChar.height;
+            cursorX = lastChar.x + lastChar.width;
+            cursorY = lastChar.y;
+            cursorHeight = lastChar.height;
           } else if (cursorIndex === 0 && layout.lines.length > 0) {
-            cursorX = layout.lines[0].x; cursorY = layout.lines[0].y; cursorHeight = layout.lines[0].height || 24;
+            cursorX = layout.lines[0].x;
+            cursorY = layout.lines[0].y;
+            cursorHeight = layout.lines[0].height || 24;
           } else {
-            let line = layout.lines.find((l: any) => cursorIndex >= l.startIndex && cursorIndex <= l.endIndex);
-            if (!line && cursorIndex === layout.totalLength) line = layout.lines[layout.lines.length - 1];
+            let line = layout.lines.find(
+              (l: any) =>
+                cursorIndex >= l.startIndex && cursorIndex <= l.endIndex
+            );
+            if (!line && cursorIndex === layout.totalLength)
+              line = layout.lines[layout.lines.length - 1];
             if (line) {
-              cursorY = line.y; cursorHeight = line.height;
-              if (el.defaultStyle.align === 'center') cursorX = line.x + line.width / 2; 
-              else if (el.defaultStyle.align === 'right') cursorX = line.x + line.width; 
-              else cursorX = line.x; 
+              cursorY = line.y;
+              cursorHeight = line.height;
+              if (el.defaultStyle.align === 'center')
+                cursorX = line.x + line.width / 2;
+              else if (el.defaultStyle.align === 'right')
+                cursorX = line.x + line.width;
+              else cursorX = line.x;
             }
           }
         }
-        ctx.beginPath(); ctx.moveTo(cursorX, cursorY); ctx.lineTo(cursorX, cursorY + cursorHeight);
-        ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cursorX, cursorY);
+        ctx.lineTo(cursorX, cursorY + cursorHeight);
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
 
       ctx.restore();
 
       // Border & Handles
       if (selectedId === el.id) {
-        const renderY = startY; 
+        const renderY = startY;
         const boxHeight = el.autoFit ? el.height : layout.totalHeight;
-        
+
         ctx.save();
         ctx.translate(el.x, renderY);
-        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; 
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(0, 0, el.width, boxHeight);
         ctx.setLineDash([]);
-        
+
         if (!isEditing) {
-          ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#3b82f6'; 
-          
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#3b82f6';
+
           // Helper function to draw an anchor
           const drawAnchor = (x: number, y: number) => {
             ctx.beginPath();
@@ -382,7 +573,7 @@ export default function CanvasRichTextEditor() {
             ctx.fill();
             ctx.stroke();
           };
-          
+
           // All 8 anchor positions
           const anchors = [
             { x: 0, y: 0 }, // top-left
@@ -394,7 +585,7 @@ export default function CanvasRichTextEditor() {
             { x: 0, y: boxHeight }, // bottom-left
             { x: 0, y: boxHeight / 2 }, // left-center
           ];
-          
+
           // Draw anchors: all 8 if autoFit, otherwise skip top-center and bottom-center
           anchors.forEach((anchor, index) => {
             if (el.autoFit) {
@@ -411,7 +602,6 @@ export default function CanvasRichTextEditor() {
         ctx.restore();
       }
     });
-
   }, [elements, selectedId, isEditing, selection, blinkVisible]);
 
   const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -426,15 +616,19 @@ export default function CanvasRichTextEditor() {
     let actionType = 'none';
 
     const now = Date.now();
-    const dist = Math.sqrt(Math.pow(x - clickTracker.current.x, 2) + Math.pow(y - clickTracker.current.y, 2));
-    
+    const dist = Math.sqrt(
+      Math.pow(x - clickTracker.current.x, 2) +
+        Math.pow(y - clickTracker.current.y, 2)
+    );
+
     if (now - clickTracker.current.lastTime < CLICK_TIMEOUT && dist < 5) {
       clickTracker.current.count += 1;
     } else {
       clickTracker.current.count = 1;
     }
     clickTracker.current.lastTime = now;
-    clickTracker.current.x = x; clickTracker.current.y = y;
+    clickTracker.current.x = x;
+    clickTracker.current.y = y;
 
     // Check for handles first
     if (selectedId && !isEditing) {
@@ -442,10 +636,14 @@ export default function CanvasRichTextEditor() {
       if (el) {
         const layoutH = el._renderHeight || 20;
         const boxHeight = el.autoFit ? el.height : layoutH;
-        const renderY = el.autoFit ? el.y : 
-                       (el.verticalAlign === 'middle' ? el.y + (el.height - layoutH)/2 : 
-                        el.verticalAlign === 'bottom' ? el.y + (el.height - layoutH) : el.y);
-        
+        const renderY = el.autoFit
+          ? el.y
+          : el.verticalAlign === 'middle'
+            ? el.y + (el.height - layoutH) / 2
+            : el.verticalAlign === 'bottom'
+              ? el.y + (el.height - layoutH)
+              : el.y;
+
         // Define all anchor positions (same order as rendering)
         const anchors = [
           { x: el.x, y: renderY, type: 'resize_tl' }, // top-left
@@ -457,14 +655,16 @@ export default function CanvasRichTextEditor() {
           { x: el.x, y: renderY + boxHeight, type: 'resize_bl' }, // bottom-left
           { x: el.x, y: renderY + boxHeight / 2, type: 'resize_l' }, // left-center
         ];
-        
+
         // Check each anchor (skip top-center and bottom-center if not autoFit)
         for (let i = 0; i < anchors.length; i++) {
           const anchor = anchors[i];
           // Skip top-center (index 1) and bottom-center (index 5) if not autoFit
           if (!el.autoFit && (i === 1 || i === 5)) continue;
-          
-          const dist = Math.sqrt(Math.pow(x - anchor.x, 2) + Math.pow(y - anchor.y, 2));
+
+          const dist = Math.sqrt(
+            Math.pow(x - anchor.x, 2) + Math.pow(y - anchor.y, 2)
+          );
           if (dist <= 8) {
             clickedId = selectedId;
             actionType = anchor.type;
@@ -479,20 +679,33 @@ export default function CanvasRichTextEditor() {
         const el = elements[i];
         const layoutH = el._renderHeight || 20;
         const boxHeight = el.autoFit ? el.height : layoutH;
-        const renderY = el.autoFit ? el.y : 
-                       (el.verticalAlign === 'middle' ? el.y + (el.height - layoutH)/2 : 
-                        el.verticalAlign === 'bottom' ? el.y + (el.height - layoutH) : el.y);
+        const renderY = el.autoFit
+          ? el.y
+          : el.verticalAlign === 'middle'
+            ? el.y + (el.height - layoutH) / 2
+            : el.verticalAlign === 'bottom'
+              ? el.y + (el.height - layoutH)
+              : el.y;
 
         const hitY = renderY;
-        
-        if (x >= el.x && x <= el.x + el.width && y >= hitY && y <= hitY + boxHeight) {
+
+        if (
+          x >= el.x &&
+          x <= el.x + el.width &&
+          y >= hitY &&
+          y <= hitY + boxHeight
+        ) {
           clickedId = el.id;
           if (isEditing && selectedId === el.id) {
             const localX = x - el.x;
             const localY = y - renderY;
-            const index = TextLayoutEngine.getCharIndexFromPos(localX, localY, el._layout);
+            const index = TextLayoutEngine.getCharIndexFromPos(
+              localX,
+              localY,
+              el._layout
+            );
             let newSelection = { start: index, end: index };
-            
+
             if (clickTracker.current.count === 2) {
               newSelection = TextLayoutEngine.getWordRangeAt(index, el._layout);
               actionType = 'text_select_locked';
@@ -519,12 +732,15 @@ export default function CanvasRichTextEditor() {
       const el = elements.find(e => e.id === clickedId);
       if (!el) return;
       if (!isEditing && actionType === 'text_select') setIsEditing(true);
-      setDragInfo({ 
-        isDragging: true, 
-        startX: x, startY: y, 
-        originalX: el.x, originalY: el.y, 
-        originalWidth: el.width, originalHeight: el.height,
-        type: actionType 
+      setDragInfo({
+        isDragging: true,
+        startX: x,
+        startY: y,
+        originalX: el.x,
+        originalY: el.y,
+        originalWidth: el.width,
+        originalHeight: el.height,
+        type: actionType,
       });
       if (clickedId !== selectedId) setIsEditing(false);
     } else {
@@ -540,15 +756,24 @@ export default function CanvasRichTextEditor() {
       const dy = y - dragInfo.startY;
 
       if (dragInfo.type === 'move') {
-        setElements(elements.map(el => el.id === selectedId ? { ...el, x: dragInfo.originalX + dx, y: dragInfo.originalY + dy } : el));
-      } 
-      else if (dragInfo.type.startsWith('resize_')) {
+        setElements(
+          elements.map(el =>
+            el.id === selectedId
+              ? {
+                  ...el,
+                  x: dragInfo.originalX + dx,
+                  y: dragInfo.originalY + dy,
+                }
+              : el
+          )
+        );
+      } else if (dragInfo.type.startsWith('resize_')) {
         const resizeType = dragInfo.type;
         const origWidth = dragInfo.originalWidth ?? 0;
         const origHeight = dragInfo.originalHeight ?? 0;
         const origX = dragInfo.originalX ?? 0;
         const origY = dragInfo.originalY ?? 0;
-        
+
         let newWidth = origWidth;
         let newHeight = origHeight;
         let newX = origX;
@@ -594,36 +819,61 @@ export default function CanvasRichTextEditor() {
 
         const updatedElements = elements.map(el => {
           if (el.id === selectedId) {
-            let updatedEl = { 
-              ...el, 
-              width: newWidth, 
+            let updatedEl = {
+              ...el,
+              width: newWidth,
               height: newHeight,
               x: newX,
-              y: newY
+              y: newY,
             };
             if (el.autoFit) {
               const ctx = canvasRef.current?.getContext('2d');
               if (!ctx) return el;
-              const containerProps = { align: el.defaultStyle.align, paragraphSpacing: el.defaultStyle.paragraphSpacing, listType: el.listType, listIndent: el.listIndent, defaultStyle: el.defaultStyle };
-              const optimalSize = TextLayoutEngine.calculateOptimalFontSize(ctx, el.valueList, newWidth, newHeight, containerProps);
-              updatedEl.valueList = updatedEl.valueList.map(v => ({...v, fontSize: optimalSize}));
-              updatedEl.defaultStyle = {...updatedEl.defaultStyle, fontSize: optimalSize};
+              const containerProps = {
+                align: el.defaultStyle.align,
+                paragraphSpacing: el.defaultStyle.paragraphSpacing,
+                listType: el.listType,
+                listIndent: el.listIndent,
+                defaultStyle: el.defaultStyle,
+              };
+              const optimalSize = TextLayoutEngine.calculateOptimalFontSize(
+                ctx,
+                el.valueList,
+                newWidth,
+                newHeight,
+                containerProps
+              );
+              updatedEl.valueList = updatedEl.valueList.map(v => ({
+                ...v,
+                fontSize: optimalSize,
+              }));
+              updatedEl.defaultStyle = {
+                ...updatedEl.defaultStyle,
+                fontSize: optimalSize,
+              };
             }
             return updatedEl;
           }
           return el;
         });
         setElements(updatedElements);
-      }
-      else if (dragInfo.type === 'text_select') {
+      } else if (dragInfo.type === 'text_select') {
         const layoutH = activeElement._renderHeight || 20;
-        const renderY = activeElement.autoFit ? activeElement.y : 
-                       (activeElement.verticalAlign === 'middle' ? activeElement.y + (activeElement.height - layoutH)/2 : 
-                        activeElement.verticalAlign === 'bottom' ? activeElement.y + (activeElement.height - layoutH) : activeElement.y);
+        const renderY = activeElement.autoFit
+          ? activeElement.y
+          : activeElement.verticalAlign === 'middle'
+            ? activeElement.y + (activeElement.height - layoutH) / 2
+            : activeElement.verticalAlign === 'bottom'
+              ? activeElement.y + (activeElement.height - layoutH)
+              : activeElement.y;
 
         const localX = x - activeElement.x;
         const localY = y - renderY;
-        const index = TextLayoutEngine.getCharIndexFromPos(localX, localY, activeElement._layout);
+        const index = TextLayoutEngine.getCharIndexFromPos(
+          localX,
+          localY,
+          activeElement._layout
+        );
         setSelection({ ...selectionRef.current, end: index });
       }
     }
@@ -643,107 +893,151 @@ export default function CanvasRichTextEditor() {
     const max = Math.max(currentSel.start, currentSel.end);
     const isRange = min !== max;
 
-    setElements(elements.map(el => {
-      if (el.id !== selectedId) return el;
-      let newValueList = el.valueList;
-      if (isRange) newValueList = deleteTextRange(newValueList, min, max);
+    setElements(
+      elements.map(el => {
+        if (el.id !== selectedId) return el;
+        let newValueList = el.valueList;
+        if (isRange) newValueList = deleteTextRange(newValueList, min, max);
 
-      const lenAfterDelete = activeFullText.length - (max - min);
-      const charsAddedCount = newText.length - lenAfterDelete;
-      
-      const textToInsert = isPaste ? newText : newText.slice(min, min + charsAddedCount);
-      
-      if (textToInsert.length > 0) {
-        newValueList = insertTextAt(newValueList, min, textToInsert);
-        const newCursor = min + textToInsert.length;
-        setSelection({ start: newCursor, end: newCursor });
-      } else {
-        setSelection({ start: min, end: min });
-      }
+        const lenAfterDelete = activeFullText.length - (max - min);
+        const charsAddedCount = newText.length - lenAfterDelete;
 
-      let finalEl = { ...el, valueList: newValueList };
-      if (finalEl.autoFit) {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return finalEl;
-        const containerProps = { align: finalEl.defaultStyle.align, paragraphSpacing: finalEl.defaultStyle.paragraphSpacing, listType: finalEl.listType, listIndent: finalEl.listIndent, defaultStyle: finalEl.defaultStyle };
-        const optimalSize = TextLayoutEngine.calculateOptimalFontSize(ctx, finalEl.valueList, finalEl.width, finalEl.height, containerProps);
-        finalEl.valueList = finalEl.valueList.map(v => ({...v, fontSize: optimalSize}));
-        finalEl.defaultStyle = {...finalEl.defaultStyle, fontSize: optimalSize};
-      }
-      return finalEl;
-    }));
+        const textToInsert = isPaste
+          ? newText
+          : newText.slice(min, min + charsAddedCount);
+
+        if (textToInsert.length > 0) {
+          newValueList = insertTextAt(newValueList, min, textToInsert);
+          const newCursor = min + textToInsert.length;
+          setSelection({ start: newCursor, end: newCursor });
+        } else {
+          setSelection({ start: min, end: min });
+        }
+
+        let finalEl = { ...el, valueList: newValueList };
+        if (finalEl.autoFit) {
+          const ctx = canvasRef.current?.getContext('2d');
+          if (!ctx) return finalEl;
+          const containerProps = {
+            align: finalEl.defaultStyle.align,
+            paragraphSpacing: finalEl.defaultStyle.paragraphSpacing,
+            listType: finalEl.listType,
+            listIndent: finalEl.listIndent,
+            defaultStyle: finalEl.defaultStyle,
+          };
+          const optimalSize = TextLayoutEngine.calculateOptimalFontSize(
+            ctx,
+            finalEl.valueList,
+            finalEl.width,
+            finalEl.height,
+            containerProps
+          );
+          finalEl.valueList = finalEl.valueList.map(v => ({
+            ...v,
+            fontSize: optimalSize,
+          }));
+          finalEl.defaultStyle = {
+            ...finalEl.defaultStyle,
+            fontSize: optimalSize,
+          };
+        }
+        return finalEl;
+      })
+    );
   };
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isEditing || !activeElement) return;
     const currentSel = selectionRef.current;
     const min = Math.min(currentSel.start, currentSel.end);
     const max = Math.max(currentSel.start, currentSel.end);
     const isRange = min !== max;
-    
+
     const updateWithFit = (updatedEl: TextElement) => {
       if (updatedEl.autoFit) {
         const ctx = canvasRef.current?.getContext('2d');
         if (!ctx) return updatedEl;
-        const containerProps = { align: updatedEl.defaultStyle.align, paragraphSpacing: updatedEl.defaultStyle.paragraphSpacing, listType: updatedEl.listType, listIndent: updatedEl.listIndent, defaultStyle: updatedEl.defaultStyle };
-        const optimalSize = TextLayoutEngine.calculateOptimalFontSize(ctx, updatedEl.valueList, updatedEl.width, updatedEl.height, containerProps);
-        updatedEl.valueList = updatedEl.valueList.map(v => ({...v, fontSize: optimalSize}));
-        updatedEl.defaultStyle = {...updatedEl.defaultStyle, fontSize: optimalSize};
+        const containerProps = {
+          align: updatedEl.defaultStyle.align,
+          paragraphSpacing: updatedEl.defaultStyle.paragraphSpacing,
+          listType: updatedEl.listType,
+          listIndent: updatedEl.listIndent,
+          defaultStyle: updatedEl.defaultStyle,
+        };
+        const optimalSize = TextLayoutEngine.calculateOptimalFontSize(
+          ctx,
+          updatedEl.valueList,
+          updatedEl.width,
+          updatedEl.height,
+          containerProps
+        );
+        updatedEl.valueList = updatedEl.valueList.map(v => ({
+          ...v,
+          fontSize: optimalSize,
+        }));
+        updatedEl.defaultStyle = {
+          ...updatedEl.defaultStyle,
+          fontSize: optimalSize,
+        };
       }
       return updatedEl;
     };
 
     if (e.key === 'Enter') {
-      e.preventDefault(); 
-      setElements(elements.map(el => {
-        if (el.id !== selectedId) return el;
-        let list = el.valueList;
-        if (isRange) list = deleteTextRange(list, min, max);
-        list = insertTextAt(list, min, '\n'); 
-        const newEl = { ...el, valueList: list };
-        return updateWithFit(newEl);
-      }));
+      e.preventDefault();
+      setElements(
+        elements.map(el => {
+          if (el.id !== selectedId) return el;
+          let list = el.valueList;
+          if (isRange) list = deleteTextRange(list, min, max);
+          list = insertTextAt(list, min, '\n');
+          const newEl = { ...el, valueList: list };
+          return updateWithFit(newEl);
+        })
+      );
       const newPos = min + 1;
       setSelection({ start: newPos, end: newPos });
-    }
-    else if (e.key === 'Backspace') {
-      e.preventDefault(); 
-      let newPos = min;
-      setElements(elements.map(el => {
-        if (el.id !== selectedId) return el;
-        let newValueList;
-        if (isRange) {
-          newValueList = deleteTextRange(el.valueList, min, max);
-          newPos = min; 
-        } else if (min > 0) {
-          newValueList = deleteTextRange(el.valueList, min - 1, min);
-          newPos = min - 1;
-        } else {
-          return el;
-        }
-        const newEl = { ...el, valueList: newValueList };
-        return updateWithFit(newEl);
-      }));
-      setSelection({ start: newPos, end: newPos });
-    } 
-    else if (e.key === 'Delete') {
+    } else if (e.key === 'Backspace') {
       e.preventDefault();
-      setElements(elements.map(el => {
-        if (el.id !== selectedId) return el;
-        const totalLen = el._layout ? el._layout.totalLength : 0;
-        let newValueList;
-        if (isRange) {
-          newValueList = deleteTextRange(el.valueList, min, max);
-          setSelection({ start: min, end: min });
-        } else if (min < totalLen) {
-          newValueList = deleteTextRange(el.valueList, min, min + 1);
-          setSelection({ start: min, end: min });
-        } else {
-          return el;
-        }
-        const newEl = { ...el, valueList: newValueList };
-        return updateWithFit(newEl);
-      }));
+      let newPos = min;
+      setElements(
+        elements.map(el => {
+          if (el.id !== selectedId) return el;
+          let newValueList;
+          if (isRange) {
+            newValueList = deleteTextRange(el.valueList, min, max);
+            newPos = min;
+          } else if (min > 0) {
+            newValueList = deleteTextRange(el.valueList, min - 1, min);
+            newPos = min - 1;
+          } else {
+            return el;
+          }
+          const newEl = { ...el, valueList: newValueList };
+          return updateWithFit(newEl);
+        })
+      );
+      setSelection({ start: newPos, end: newPos });
+    } else if (e.key === 'Delete') {
+      e.preventDefault();
+      setElements(
+        elements.map(el => {
+          if (el.id !== selectedId) return el;
+          const totalLen = el._layout ? el._layout.totalLength : 0;
+          let newValueList;
+          if (isRange) {
+            newValueList = deleteTextRange(el.valueList, min, max);
+            setSelection({ start: min, end: min });
+          } else if (min < totalLen) {
+            newValueList = deleteTextRange(el.valueList, min, min + 1);
+            setSelection({ start: min, end: min });
+          } else {
+            return el;
+          }
+          const newEl = { ...el, valueList: newValueList };
+          return updateWithFit(newEl);
+        })
+      );
     }
   };
 
@@ -768,16 +1062,21 @@ export default function CanvasRichTextEditor() {
     const isCmd = e.metaKey || e.ctrlKey;
     if (isCmd && e.key === 'z') {
       e.preventDefault();
-      if (e.shiftKey) { const s = redo(); if(s) setElements(s); }
-      else { const s = undo(); if(s) setElements(s); }
+      if (e.shiftKey) {
+        const s = redo();
+        if (s) setElements(s);
+      } else {
+        const s = undo();
+        if (s) setElements(s);
+      }
       return;
     }
-    
+
     // Let plugins handle keyboard shortcuts
     if (isEditing && pluginRegistry.handleKeyDown(e, pluginContext)) {
       return;
     }
-    
+
     if (isEditing && isCmd && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       if (activeElement && activeElement._layout) {
@@ -789,34 +1088,41 @@ export default function CanvasRichTextEditor() {
   const handleAddText = () => {
     const newId = generateId();
     const newEl: TextElement = {
-      id: newId, 
-      type: "RICH_TEXT", 
-      x: STAGE_WIDTH / 2 - 150, 
-      y: STAGE_HEIGHT / 2 - 75, 
-      width: 300, 
-      height: 150, 
-      isEditing: false, 
-      autoFit: false, 
+      id: newId,
+      type: 'RICH_TEXT',
+      x: STAGE_WIDTH / 2 - 150,
+      y: STAGE_HEIGHT / 2 - 75,
+      width: 300,
+      height: 150,
+      isEditing: false,
+      autoFit: false,
       verticalAlign: 'top',
-      listType: 'none', 
+      listType: 'none',
       listIndent: 0,
-      defaultStyle: { 
-        fontSize: 24, 
-        fontFamily: "Arial", 
-        fill: "#000000", 
-        align: 'center', 
-        isBold: false, 
-        isItalic: false, 
-        isUnderline: false, 
-        isStrike: false, 
+      defaultStyle: {
+        fontSize: 24,
+        fontFamily: 'Arial',
+        fill: '#000000',
+        align: 'center',
+        isBold: false,
+        isItalic: false,
+        isUnderline: false,
+        isStrike: false,
         backgroundColor: null,
         lineHeight: 1.2,
         letterSpacing: 0,
         paragraphSpacing: 0,
         textTransform: 'none',
-        shadow: false
+        shadow: false,
       },
-      valueList: [{ text: "Double click to edit", fontSize: 24, fontFamily: "Arial", fill: "#000000" }]
+      valueList: [
+        {
+          text: 'Double click to edit',
+          fontSize: 24,
+          fontFamily: 'Arial',
+          fill: '#000000',
+        },
+      ],
     };
     setElements([...elements, newEl]);
     setSelectedId(newId);
@@ -834,48 +1140,52 @@ export default function CanvasRichTextEditor() {
   // Ensures toolbar always stays within viewport bounds (window screen)
   const getToolbarPosition = useMemo(() => {
     if (!activeElement || !canvasContainerRef.current) return null;
-    
+
     const containerRect = canvasContainerRef.current.getBoundingClientRect();
-    
+
     const layoutH = activeElement._renderHeight || 20;
-    const renderY = activeElement.autoFit ? activeElement.y : 
-                   (activeElement.verticalAlign === 'middle' ? activeElement.y + (activeElement.height - layoutH)/2 : 
-                    activeElement.verticalAlign === 'bottom' ? activeElement.y + (activeElement.height - layoutH) : activeElement.y);
-    
+    const renderY = activeElement.autoFit
+      ? activeElement.y
+      : activeElement.verticalAlign === 'middle'
+        ? activeElement.y + (activeElement.height - layoutH) / 2
+        : activeElement.verticalAlign === 'bottom'
+          ? activeElement.y + (activeElement.height - layoutH)
+          : activeElement.y;
+
     // Estimate toolbar dimensions
     const TOOLBAR_ESTIMATED_WIDTH = 700; // Approximate width of toolbar
     const TOOLBAR_ESTIMATED_HEIGHT = 110; // Approximate height of toolbar (2 rows)
     const PADDING = 10; // Padding from viewport edges
-    
+
     // Calculate element position in viewport coordinates
     const elementViewportX = containerRect.left + activeElement.x;
     const elementViewportY = containerRect.top + renderY;
     const elementCenterX = elementViewportX + activeElement.width / 2;
-    
+
     // Calculate toolbar position in viewport coordinates
     // Center toolbar horizontally on element's center x
     let toolbarViewportX = elementCenterX - TOOLBAR_ESTIMATED_WIDTH / 2;
     let toolbarViewportY = elementViewportY - PADDING;
     let positionAbove = true;
-    
+
     // Horizontal bounds checking (viewport)
     const viewportRight = window.innerWidth - PADDING;
     const viewportLeft = PADDING;
-    
+
     // If toolbar would go off the right edge of viewport, align to the right
     if (toolbarViewportX + TOOLBAR_ESTIMATED_WIDTH > viewportRight) {
       toolbarViewportX = viewportRight - TOOLBAR_ESTIMATED_WIDTH;
     }
-    
+
     // If toolbar would go off the left edge of viewport, align to the left
     if (toolbarViewportX < viewportLeft) {
       toolbarViewportX = viewportLeft;
     }
-    
+
     // Vertical bounds checking (viewport)
     const viewportTop = PADDING;
     const viewportBottom = window.innerHeight - PADDING;
-    
+
     // Check if there's enough space above in viewport
     if (toolbarViewportY - TOOLBAR_ESTIMATED_HEIGHT < viewportTop) {
       // Not enough space above, position below instead
@@ -883,7 +1193,7 @@ export default function CanvasRichTextEditor() {
       toolbarViewportY = elementViewportY + boxHeight + PADDING;
       positionAbove = false;
     }
-    
+
     // Ensure toolbar doesn't go below viewport
     if (toolbarViewportY + TOOLBAR_ESTIMATED_HEIGHT > viewportBottom) {
       toolbarViewportY = viewportBottom - TOOLBAR_ESTIMATED_HEIGHT;
@@ -893,33 +1203,47 @@ export default function CanvasRichTextEditor() {
         positionAbove = true;
       }
     }
-    
+
     // Convert back to container-relative coordinates
     const toolbarX = toolbarViewportX - containerRect.left;
     const toolbarY = toolbarViewportY - containerRect.top;
-    
+
     return {
       x: toolbarX,
       y: toolbarY,
-      positionAbove
+      positionAbove,
     };
   }, [activeElement, viewportSize]);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 overflow-hidden font-sans select-none" onKeyDown={handleGlobalKeyDown as any} tabIndex={0}>
+    <div
+      className="flex flex-col h-screen bg-gray-100 overflow-hidden font-sans select-none"
+      onKeyDown={handleGlobalKeyDown as any}
+      tabIndex={0}
+    >
       {/* {!activeElement && ( */}
-        <MainToolbar 
-          onAddText={handleAddText}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onUndo={() => { const s = undo(); if(s) setElements(s); }}
-          onRedo={() => { const s = redo(); if(s) setElements(s); }}
-        />
+      <MainToolbar
+        onAddText={handleAddText}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={() => {
+          const s = undo();
+          if (s) setElements(s);
+        }}
+        onRedo={() => {
+          const s = redo();
+          if (s) setElements(s);
+        }}
+      />
       {/* )} */}
 
       <div className="flex-1 overflow-auto flex justify-center items-center p-8 bg-gray-100">
-        <div ref={canvasContainerRef} className="relative shadow-2xl bg-white ring-1 ring-gray-900/5" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}>
-          <canvas 
+        <div
+          ref={canvasContainerRef}
+          className="relative shadow-2xl bg-white ring-1 ring-gray-900/5"
+          style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
+        >
+          <canvas
             ref={canvasRef}
             width={STAGE_WIDTH}
             height={STAGE_HEIGHT}
@@ -928,7 +1252,7 @@ export default function CanvasRichTextEditor() {
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onDoubleClick={handleDoubleClick}
-            className={isEditing ? "cursor-text" : "cursor-default"}
+            className={isEditing ? 'cursor-text' : 'cursor-default'}
           />
           {activeElement && getToolbarPosition && (
             <ElementToolbar
@@ -937,8 +1261,14 @@ export default function CanvasRichTextEditor() {
               onDelete={handleDelete}
               canUndo={canUndo}
               canRedo={canRedo}
-              onUndo={() => { const s = undo(); if(s) setElements(s); }}
-              onRedo={() => { const s = redo(); if(s) setElements(s); }}
+              onUndo={() => {
+                const s = undo();
+                if (s) setElements(s);
+              }}
+              onRedo={() => {
+                const s = redo();
+                if (s) setElements(s);
+              }}
               context={pluginContext}
               x={getToolbarPosition.x}
               y={getToolbarPosition.y}
@@ -949,25 +1279,30 @@ export default function CanvasRichTextEditor() {
       </div>
 
       {isEditing && (
-        <HiddenInput 
-          value={activeFullText} 
+        <HiddenInput
+          value={activeFullText}
           selectionStart={Math.min(selection.start, selection.end)}
           selectionEnd={Math.max(selection.start, selection.end)}
           onChange={handleHiddenInputChange}
           onKeyDown={handleKeyDown}
-          onSelect={(s, e) => { if (!dragInfo.isDragging) setSelection({ start: s, end: e }); }}
+          onSelect={(s, e) => {
+            if (!dragInfo.isDragging) setSelection({ start: s, end: e });
+          }}
           onPaste={handlePaste}
           onCopy={handleCopy}
-          onBlur={() => {}} 
+          onBlur={() => {}}
         />
       )}
-      
+
       <div className="bg-white border-t border-gray-200 text-xs px-3 py-1.5 flex gap-4 text-gray-500 font-medium z-50 relative">
-        <span>Selection: {selection.start} - {selection.end}</span>
-        <span>State: {isEditing ? "Editing" : "Idle"}</span>
-        <span>Mode: {activeElement?.autoFit ? "Auto-Fit (Scale)" : "Standard"}</span>
+        <span>
+          Selection: {selection.start} - {selection.end}
+        </span>
+        <span>State: {isEditing ? 'Editing' : 'Idle'}</span>
+        <span>
+          Mode: {activeElement?.autoFit ? 'Auto-Fit (Scale)' : 'Standard'}
+        </span>
       </div>
     </div>
   );
 }
-
