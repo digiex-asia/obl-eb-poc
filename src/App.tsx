@@ -8,6 +8,7 @@ import SkiaEditor from './components/SkiaEditor';
 import EditorComparison from './components/EditorComparison';
 import GraphicEditor from './components/GraphicEditor';
 import RichtextEditor from './components/Richtext/App';
+import TextEditor from './components/TextEditor';
 
 const Navigation = ({ isVisible, onToggle }: { isVisible: boolean; onToggle: () => void }) => {
     return (
@@ -60,6 +61,12 @@ const Navigation = ({ isVisible, onToggle }: { isVisible: boolean; onToggle: () 
                 >
                     Rich Text
                 </Link>
+                <Link
+                    to="/text-editor"
+                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-50 transition-colors text-blue-600 border border-blue-200"
+                >
+                    Text Editor
+                </Link>
             </nav>
 
             {/* Toggle Button */}
@@ -104,6 +111,7 @@ const App = () => {
                         <Route path="/skia" element={<SkiaEditor />} />
                         <Route path="/graphic" element={<GraphicEditor />} />
                         <Route path="/richtext" element={<RichtextEditor />} />
+                        <Route path="/text-editor" element={<TextEditor />} />
                     </Routes>
                 </div>
             </div>
