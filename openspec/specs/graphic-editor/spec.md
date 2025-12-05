@@ -1,6 +1,20 @@
 # Graphic Editor Specification
 
-## ADDED Requirements
+## Purpose
+
+The Graphic Editor is a browser-based video composition tool that enables users to create animated video content with synchronized audio. It provides a timeline-based interface for managing multiple pages (video segments), visual elements (shapes, images, text), and audio clips. Users can apply animations, export to video format, or save projects as JSON for backend processing.
+
+**Key Capabilities:**
+- Multi-page timeline composition with configurable page durations
+- Visual element creation and manipulation (shapes, images, text)
+- Element and page-level animations with preview
+- Multi-track audio mixing with trim support
+- Real-time canvas rendering with zoom/pan controls
+- Video export with frame-by-frame rendering and audio synchronization
+- Undo/redo history management
+- Konva-compatible JSON export for interoperability
+
+## Requirements
 
 ### Requirement: Multi-Page Timeline Editor
 

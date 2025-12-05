@@ -1,122 +1,140 @@
 import { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Link,
+  useLocation,
+} from 'react-router-dom';
+import {
+  PanelRightClose,
+  PanelRightOpen,
+  LayoutDashboard,
+  Layers,
+  Palette,
+  PenTool,
+  Type,
+} from 'lucide-react';
 import CanvasEditor from './components/CanvasEditor';
 import KonvaEditor from './components/KonvaEditor';
-import GeminiEditor from './components/GeminiEditor';
 import SkiaEditor from './components/SkiaEditor';
-import EditorComparison from './components/EditorComparison';
 import GraphicEditor from './components/GraphicEditor';
 import RichtextEditor from './components/Richtext/App';
 import TextEditor from './components/TextEditor';
 
-const Navigation = ({ isVisible, onToggle }: { isVisible: boolean; onToggle: () => void }) => {
-    return (
-        <div className="relative">
-            {/* Navigation Bar */}
-            <nav
-                className={`bg-white border-b border-gray-200 px-6 py-3 flex gap-4 items-center transition-all duration-300 overflow-hidden ${
-                    isVisible ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0 py-0 border-b-0'
-                }`}
-            >
-                <Link
-                    to="/"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors"
-                >
-                    Canvas
-                </Link>
-                <Link
-                    to="/konva"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors"
-                >
-                    Konva
-                </Link>
-                <Link
-                    to="/gemini"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors text-purple-600"
-                >
-                    Gemini
-                </Link>
-                <Link
-                    to="/comparison"
-                    className="px-4 py-2 rounded-md text-sm hover:bg-gray-100 transition-colors text-blue-600 font-bold"
-                >
-                    Comparison
-                </Link>
-                <Link
-                    to="/skia"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition-colors"
-                >
-                    Skia
-                </Link>
-                <Link
-                    to="/graphic"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-50 transition-colors text-emerald-600 border border-emerald-200"
-                >
-                    Graphic Editor
-                </Link>
-                <Link
-                    to="/richtext"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-50 transition-colors text-blue-600 border border-blue-200"
-                >
-                    Rich Text
-                </Link>
-                <Link
-                    to="/text-editor"
-                    className="px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-50 transition-colors text-blue-600 border border-blue-200"
-                >
-                    Text Editor
-                </Link>
-            </nav>
+/**
+ * Navigation item configuration
+ */
+interface NavItem {
+  path: string;
+  label: string;
+  icon: React.ReactNode;
+  color?: string;
+}
 
-            {/* Toggle Button */}
-            <button
-                onClick={onToggle}
-                className={`absolute left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-b-lg transition-all duration-300 shadow-md ${
-                    isVisible
-                        ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 top-full'
-                        : 'bg-white text-gray-600 hover:bg-gray-50 top-0 rounded-t-none border border-t-0 border-gray-200'
-                }`}
-                title={isVisible ? 'Hide navigation' : 'Show navigation'}
+const navItems: NavItem[] = [
+  { path: '/', label: 'Canvas', icon: <LayoutDashboard size={20} /> },
+  { path: '/konva', label: 'Konva', icon: <Layers size={20} /> },
+  { path: '/skia', label: 'Skia', icon: <Palette size={20} /> },
+  {
+    path: '/graphic',
+    label: 'Graphic',
+    icon: <PenTool size={20} />,
+    color: 'text-emerald-600',
+  },
+  {
+    path: '/richtext',
+    label: 'Rich Text',
+    icon: <Type size={20} />,
+    color: 'text-blue-600',
+  },
+  {
+    path: '/text-editor',
+    label: 'Text Editor',
+    icon: <Type size={20} />,
+    color: 'text-blue-600',
+  },
+];
+
+/**
+ * Vertical sidebar navigation component
+ */
+const SidebarNavigation = ({
+  isExpanded,
+  onToggle,
+}: {
+  isExpanded: boolean;
+  onToggle: () => void;
+}) => {
+  const location = useLocation();
+
+  return (
+    <nav
+      className={`h-full bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+        isExpanded ? 'w-44' : 'w-14'
+      }`}
+    >
+      {/* Toggle Button */}
+      <button
+        onClick={onToggle}
+        className="flex items-center justify-center h-12 border-b border-gray-200 hover:bg-gray-100 transition-colors"
+        title={isExpanded ? 'Collapse menu' : 'Expand menu'}
+      >
+        {isExpanded ? (
+          <PanelRightClose size={20} />
+        ) : (
+          <PanelRightOpen size={20} />
+        )}
+      </button>
+
+      {/* Navigation Items */}
+      <div className="flex-1 py-2 flex flex-col gap-1 overflow-y-auto">
+        {navItems.map(item => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex items-center gap-3 px-3 py-2.5 mx-2 rounded-lg transition-colors ${
+                isActive ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'
+              } ${item.color || 'text-gray-700'}`}
+              title={!isExpanded ? item.label : undefined}
             >
-                {isVisible ? (
-                    <>
-                        <ChevronUp size={14} />
-                        <span>Hide</span>
-                    </>
-                ) : (
-                    <>
-                        <ChevronDown size={14} />
-                        <span>Menu</span>
-                    </>
-                )}
-            </button>
-        </div>
-    );
+              <span className="flex-shrink-0">{item.icon}</span>
+              {isExpanded && (
+                <span className="text-sm truncate">{item.label}</span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
 };
 
 const App = () => {
-    const [navVisible, setNavVisible] = useState(true);
+  const [navExpanded, setNavExpanded] = useState(true);
 
-    return (
-        <Router>
-            <div className="h-screen flex flex-col">
-                <Navigation isVisible={navVisible} onToggle={() => setNavVisible(!navVisible)} />
-                <div className="flex-1 overflow-hidden">
-                    <Routes>
-                        <Route path="/" element={<CanvasEditor />} />
-                        <Route path="/konva" element={<KonvaEditor />} />
-                        <Route path="/gemini" element={<GeminiEditor />} />
-                        <Route path="/comparison" element={<EditorComparison />} />
-                        <Route path="/skia" element={<SkiaEditor />} />
-                        <Route path="/graphic" element={<GraphicEditor />} />
-                        <Route path="/richtext" element={<RichtextEditor />} />
-                        <Route path="/text-editor" element={<TextEditor />} />
-                    </Routes>
-                </div>
-            </div>
-        </Router>
-    );
+  return (
+    <Router>
+      <div className="h-screen flex">
+        <SidebarNavigation
+          isExpanded={navExpanded}
+          onToggle={() => setNavExpanded(!navExpanded)}
+        />
+        <div className="flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/" element={<CanvasEditor />} />
+            <Route path="/konva" element={<KonvaEditor />} />
+            <Route path="/skia" element={<SkiaEditor />} />
+            <Route path="/graphic" element={<GraphicEditor />} />
+            <Route path="/richtext" element={<RichtextEditor />} />
+            <Route path="/text-editor" element={<TextEditor />} />
+          </Routes>
+        </div>
+      </div>
+    </Router>
+  );
 };
 
 export default App;
