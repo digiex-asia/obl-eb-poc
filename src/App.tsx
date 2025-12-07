@@ -19,7 +19,10 @@ import {
 import CanvasEditor from './components/CanvasEditor';
 import KonvaEditor from './components/KonvaEditor';
 import SkiaEditor from './components/SkiaEditor';
-import GraphicEditor from './components/GraphicEditor';
+import GraphicEditor, {
+  GraphicEditorOld,
+  GraphicEditorNew,
+} from './components/GraphicEditor';
 import RichtextEditor from './components/Richtext/App';
 import TextEditor from './components/TextEditor';
 
@@ -43,10 +46,16 @@ const navItems: NavItem[] = [
   { path: '/konva', label: 'Konva', icon: <Layers size={20} /> },
   { path: '/skia', label: 'Skia', icon: <Palette size={20} /> },
   {
-    path: '/graphic',
-    label: 'Graphic',
+    path: '/graphic-old',
+    label: 'Graphic Mono',
     icon: <PenTool size={20} />,
-    color: 'text-emerald-600',
+    color: 'text-orange-600',
+  },
+  {
+    path: '/graphic-new',
+    label: 'Graphic FSD',
+    icon: <PenTool size={20} />,
+    color: 'text-violet-600',
   },
   {
     path: '/richtext',
@@ -150,7 +159,8 @@ const App = () => {
             <Route path="/" element={<CanvasEditor />} />
             <Route path="/konva" element={<KonvaEditor />} />
             <Route path="/skia" element={<SkiaEditor />} />
-            <Route path="/graphic" element={<GraphicEditor />} />
+            <Route path="/graphic-old" element={<GraphicEditorOld />} />
+            <Route path="/graphic-new" element={<GraphicEditorNew />} />
             <Route path="/richtext" element={<RichtextEditor />} />
             <Route path="/text-editor" element={<TextEditor />} />
           </Routes>
