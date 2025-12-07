@@ -1,0 +1,485 @@
+### GraphicEditor API Test Suite
+### Use with REST Client extension in VS Code or any HTTP client
+###
+### ⚠️ IMPORTANT: Most endpoints require PostgreSQL to be running!
+### To setup database:
+###   cd api
+###   docker-compose up -d  (or podman-compose up -d)
+###   bun run migration:run
+###
+### The server will return "relation 'templates' does not exist" error without database.
+### However, the API documentation endpoint below works without database:
+
+@baseUrl = http://localhost:3000/api/v1
+@contentType = application/json
+
+################################################################################
+### 1. Health Check - API Documentation (No Database Required)
+GET http://localhost:3000/api/docs
+
+################################################################################
+### 2. Create a New Template
+POST {{baseUrl}}/templates
+Content-Type: {{contentType}}
+
+{
+  "name": "Fashion Brand Template",
+  "description": "Modern template for fashion brands",
+  "category": "fashion",
+  "tags": ["minimal", "modern", "fashion"],
+  "isPublic": true,
+  "designData": {
+    "canvas": {
+      "width": 800,
+      "height": 450
+    },
+    "pages": [
+      {
+        "id": "page_1",
+        "duration": 5,
+        "background": "#ffffff",
+        "elements": [
+          {
+            "id": "el_text_1",
+            "type": "text",
+            "x": 200,
+            "y": 180,
+            "width": 400,
+            "height": 60,
+            "rotation": 0,
+            "fill": "#1e293b",
+            "text": "NEW ARRIVALS",
+            "fontSize": 48,
+            "opacity": 1
+          },
+          {
+            "id": "el_rect_1",
+            "type": "rect",
+            "x": 100,
+            "y": 280,
+            "width": 600,
+            "height": 100,
+            "rotation": 0,
+            "fill": "#3b82f6",
+            "opacity": 0.8
+          }
+        ]
+      }
+    ],
+    "audioLayers": []
+  }
+}
+
+################################################################################
+### 3. Get All Templates
+GET {{baseUrl}}/templates
+
+################################################################################
+### 4. Get All Templates - Filter by Category
+GET {{baseUrl}}/templates?category=fashion
+
+################################################################################
+### 5. Get All Templates - Filter by Tags
+GET {{baseUrl}}/templates?tags=minimal&tags=modern
+
+################################################################################
+### 6. Get All Templates - Filter by Public Status
+GET {{baseUrl}}/templates?isPublic=true
+
+################################################################################
+### 7. Get Template by ID
+# Replace {templateId} with actual ID from step 2 response
+GET {{baseUrl}}/templates/{templateId}
+
+################################################################################
+### 8. Update Template Metadata
+# Replace {templateId} with actual ID
+PATCH {{baseUrl}}/templates/{templateId}
+Content-Type: {{contentType}}
+
+{
+  "name": "Fashion Brand Template - Updated",
+  "description": "Updated description for modern fashion brands",
+  "tags": ["minimal", "modern", "fashion", "ecommerce"]
+}
+
+################################################################################
+### 9. Apply Operations - Add New Element
+# Replace {templateId} with actual ID
+# Replace baseVersion with the current version from GET response
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 1,
+  "operations": [
+    {
+      "id": "op_001",
+      "type": "add_element",
+      "target": {
+        "pageId": "page_1"
+      },
+      "payload": {
+        "id": "el_circle_1",
+        "type": "circle",
+        "x": 400,
+        "y": 225,
+        "width": 100,
+        "height": 100,
+        "rotation": 0,
+        "fill": "#ef4444",
+        "opacity": 1
+      },
+      "timestamp": 1701234567890
+    }
+  ]
+}
+
+################################################################################
+### 10. Apply Operations - Update Element Position
+# Replace {templateId} and baseVersion
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 2,
+  "operations": [
+    {
+      "id": "op_002",
+      "type": "move_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_text_1"
+      },
+      "payload": {
+        "x": 250,
+        "y": 200
+      },
+      "timestamp": 1701234567891
+    }
+  ]
+}
+
+################################################################################
+### 11. Apply Operations - Resize Element
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 3,
+  "operations": [
+    {
+      "id": "op_003",
+      "type": "resize_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_rect_1"
+      },
+      "payload": {
+        "width": 650,
+        "height": 120,
+        "x": 75,
+        "y": 270
+      },
+      "timestamp": 1701234567892
+    }
+  ]
+}
+
+################################################################################
+### 12. Apply Operations - Update Element Properties
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 4,
+  "operations": [
+    {
+      "id": "op_004",
+      "type": "update_element_props",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_text_1"
+      },
+      "payload": {
+        "fill": "#ef4444",
+        "fontSize": 52
+      },
+      "timestamp": 1701234567893
+    }
+  ]
+}
+
+################################################################################
+### 13. Apply Operations - Add New Page
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 5,
+  "operations": [
+    {
+      "id": "op_005",
+      "type": "add_page",
+      "target": {},
+      "payload": {
+        "id": "page_2",
+        "duration": 5,
+        "background": "#f8fafc",
+        "elements": [
+          {
+            "id": "el_text_2",
+            "type": "text",
+            "x": 300,
+            "y": 200,
+            "width": 200,
+            "height": 50,
+            "rotation": 0,
+            "fill": "#1e293b",
+            "text": "Page 2",
+            "fontSize": 36,
+            "opacity": 1
+          }
+        ]
+      },
+      "timestamp": 1701234567894
+    }
+  ]
+}
+
+################################################################################
+### 14. Apply Operations - Delete Element
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 6,
+  "operations": [
+    {
+      "id": "op_006",
+      "type": "delete_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_circle_1"
+      },
+      "payload": {},
+      "timestamp": 1701234567895
+    }
+  ]
+}
+
+################################################################################
+### 15. Apply Batch Operations (Multiple at once)
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 7,
+  "operations": [
+    {
+      "id": "op_007",
+      "type": "move_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_text_1"
+      },
+      "payload": {
+        "x": 300,
+        "y": 180
+      },
+      "timestamp": 1701234567896
+    },
+    {
+      "id": "op_008",
+      "type": "rotate_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_rect_1"
+      },
+      "payload": {
+        "rotation": 5
+      },
+      "timestamp": 1701234567897
+    },
+    {
+      "id": "op_009",
+      "type": "update_element_props",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_rect_1"
+      },
+      "payload": {
+        "opacity": 0.9
+      },
+      "timestamp": 1701234567898
+    }
+  ]
+}
+
+################################################################################
+### 16. Test Optimistic Locking - Version Conflict
+# This should fail with 409 Conflict if version doesn't match
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 1,
+  "operations": [
+    {
+      "id": "op_010",
+      "type": "move_element",
+      "target": {
+        "pageId": "page_1",
+        "elementId": "el_text_1"
+      },
+      "payload": {
+        "x": 100,
+        "y": 100
+      },
+      "timestamp": 1701234567899
+    }
+  ]
+}
+
+################################################################################
+### 17. Fork a Template
+# Replace {templateId} with the template you want to fork
+POST {{baseUrl}}/templates/{templateId}/fork
+Content-Type: {{contentType}}
+
+{
+  "name": "My Custom Fashion Template",
+  "description": "Forked from the original fashion template",
+  "autoSyncFromParent": false
+}
+
+################################################################################
+### 18. Get Template Relationships
+# Replace {templateId} with actual ID
+GET {{baseUrl}}/templates/{templateId}/relationships
+
+################################################################################
+### 19. Create Another Template for Testing
+POST {{baseUrl}}/templates
+Content-Type: {{contentType}}
+
+{
+  "name": "Tech Startup Template",
+  "description": "Modern template for tech startups",
+  "category": "technology",
+  "tags": ["minimal", "tech", "startup"],
+  "isPublic": true,
+  "designData": {
+    "canvas": {
+      "width": 800,
+      "height": 450
+    },
+    "pages": [
+      {
+        "id": "page_1",
+        "duration": 5,
+        "background": "#0f172a",
+        "elements": [
+          {
+            "id": "el_text_1",
+            "type": "text",
+            "x": 200,
+            "y": 200,
+            "width": 400,
+            "height": 60,
+            "rotation": 0,
+            "fill": "#ffffff",
+            "text": "INNOVATION",
+            "fontSize": 56,
+            "opacity": 1
+          }
+        ]
+      }
+    ],
+    "audioLayers": []
+  }
+}
+
+################################################################################
+### 20. Delete Template (Soft Delete)
+# Replace {templateId} with actual ID
+DELETE {{baseUrl}}/templates/{templateId}
+
+################################################################################
+### 21. Verify Soft Delete - Should Return 404
+# Replace {templateId} with the deleted template ID
+GET {{baseUrl}}/templates/{templateId}
+
+################################################################################
+### ERROR CASES - Testing Validation
+################################################################################
+
+### 22. Create Template - Missing Required Fields (Should Fail)
+POST {{baseUrl}}/templates
+Content-Type: {{contentType}}
+
+{
+  "name": "Incomplete Template"
+}
+
+################################################################################
+### 23. Create Template - Invalid Data Type (Should Fail)
+POST {{baseUrl}}/templates
+Content-Type: {{contentType}}
+
+{
+  "name": "Invalid Template",
+  "isPublic": "not-a-boolean",
+  "designData": {
+    "canvas": {
+      "width": 800,
+      "height": 450
+    },
+    "pages": [],
+    "audioLayers": []
+  }
+}
+
+################################################################################
+### 24. Apply Operations - Invalid Operation Type (Should Fail)
+POST {{baseUrl}}/templates/{templateId}/operations
+Content-Type: {{contentType}}
+
+{
+  "baseVersion": 1,
+  "operations": [
+    {
+      "id": "op_invalid",
+      "type": "invalid_operation_type",
+      "target": {},
+      "payload": {},
+      "timestamp": 1701234567899
+    }
+  ]
+}
+
+################################################################################
+### 25. Get Non-existent Template (Should Return 404)
+GET {{baseUrl}}/templates/00000000-0000-0000-0000-000000000000
+
+################################################################################
+### NOTES:
+###
+### 1. Replace {templateId} with actual UUIDs from responses
+### 2. Update baseVersion numbers after each operation
+### 3. The server is running at http://localhost:3000
+### 4. API Documentation is at http://localhost:3000/api/docs
+### 5. Without PostgreSQL, you'll get database connection errors
+###    To run with database:
+###    - Start PostgreSQL: docker-compose up -d (or podman-compose)
+###    - Run migrations: bun run migration:run
+###
+### WebSocket Testing (use a WebSocket client):
+### ws://localhost:3000/collaboration
+###
+### Events to test:
+### - emit: join_room { templateId, userId, userName }
+### - emit: apply_operations { templateId, operations[], baseVersion, userId }
+### - emit: cursor_move { templateId, userId, x, y }
+### - emit: leave_room { templateId, userId }
+################################################################################

@@ -1,0 +1,36 @@
+{
+  "name": "Test Template",
+  "description": "Testing the API with database",
+  "category": "test",
+  "tags": ["test", "demo"],
+  "isPublic": true,
+  "designData": {
+    "canvas": {
+      "width": 800,
+      "height": 450
+    },
+    "pages": [
+      {
+        "id": "page_1",
+        "duration": 5,
+        "background": "#ffffff",
+        "elements": [
+          {
+            "id": "el_1",
+            "type": "text",
+            "x": 100,
+            "y": 100,
+            "width": 200,
+            "height": 50,
+            "rotation": 0,
+            "fill": "#000000",
+            "text": "Hello Database!",
+            "fontSize": 24,
+            "opacity": 1
+          }
+        ]
+      }
+    ],
+    "audioLayers": []
+  }
+}
