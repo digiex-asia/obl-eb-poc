@@ -1,4 +1,5 @@
 import { Layers, Undo2, Redo2, Film, Save, Loader2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 const Header = ({
   past,
@@ -10,7 +11,14 @@ const Header = ({
   onRedo,
   onExportVideo,
   onExportJSON,
-}: any) => {
+  saveIndicator,
+  createTemplateBtn,
+  openTemplateBtn,
+}: any & {
+  saveIndicator?: ReactNode;
+  createTemplateBtn?: ReactNode;
+  openTemplateBtn?: ReactNode;
+}) => {
   return (
     <div className="h-10 bg-violet-600 text-white flex items-center justify-between px-5 shadow-sm z-40 flex-shrink-0">
       <div className="flex items-center gap-4">
@@ -38,12 +46,18 @@ const Header = ({
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <div className="text-xs bg-white/10 px-3 py-1 rounded-full">
-          Untitled Design
-        </div>
+        {/* Save Indicator - shows template name and save status */}
+        {saveIndicator || (
+          <div className="text-xs bg-white/10 px-3 py-1 rounded-full">
+            Untitled Design
+          </div>
+        )}
         <div className="text-xs bg-white/10 px-3 py-1 rounded-full font-mono">
           {Math.round(zoom * 100)}%
         </div>
+        {/* Template Management Buttons */}
+        {openTemplateBtn}
+        {createTemplateBtn}
         {/* EXPORT BUTTONS */}
         <button
           onClick={onExportVideo}

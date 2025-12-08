@@ -84,7 +84,8 @@ type Action =
   | { type: 'SET_SPACE_PRESSED'; pressed: boolean }
   | { type: 'START_EXPORT' }
   | { type: 'UPDATE_EXPORT_PROGRESS'; progress: number }
-  | { type: 'FINISH_EXPORT' };
+  | { type: 'FINISH_EXPORT' }
+  | { type: 'LOAD_TEMPLATE'; data: Partial<AppState> };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -538,6 +539,24 @@ const reducer = (state: AppState, action: Action): AppState => {
       return { ...state, exportProgress: action.progress };
     case 'FINISH_EXPORT':
       return { ...state, isExporting: false, exportProgress: 0 };
+    case 'LOAD_TEMPLATE':
+      // Load template data while preserving UI state
+      const newState = {
+        ...state,
+        ...action.data,
+        // Set activePageId to first page if not already set
+        activePageId: action.data.pages?.[0]?.id || state.activePageId,
+        // Reset history when loading a template
+        past: [],
+        future: [],
+        // Clear selections
+        selectedElementId: null,
+        selectedAudioId: null,
+        // Reset playback
+        isPlaying: false,
+        currentTime: 0,
+      };
+      return newState;
     default:
       return state;
   }

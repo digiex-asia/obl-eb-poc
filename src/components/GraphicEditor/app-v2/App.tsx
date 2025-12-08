@@ -18,8 +18,17 @@ import PropertiesContent from '../features/properties/ui/PropertiesContent';
 import AnimationControl from '../features/animation/ui/AnimationControl';
 import ContextMenu from '../features/export/ui/ContextMenu';
 
+// Backend integration imports
+import { useTemplate } from '../shared/hooks/useTemplate';
+import { useAutoSave } from '../shared/hooks/useAutoSave';
+import { useOperationQueue } from '../shared/hooks/useOperationQueue';
+import { operationGenerator } from '../shared/lib/operationGenerator';
+import { CreateTemplateBtn } from '../features/template-manager/ui/CreateTemplateBtn';
+import { SaveIndicator } from '../features/template-manager/ui/SaveIndicator';
+import { OpenTemplateBtn } from '../features/template-manager/ui/OpenTemplateBtn';
+
 const App = () => {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, baseDispatch] = useReducer(reducer, initialState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderTick, setRenderTick] = useState(0);
@@ -31,6 +40,111 @@ const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Backend integration hooks
+  const {
+    currentTemplateId,
+    templateName,
+    templateVersion,
+    createTemplate,
+    loadTemplate,
+    saveTemplate,
+    listTemplates,
+    setTemplateVersion,
+  } = useTemplate(state);
+
+  // Use partial updates (operations) for efficiency - RECOMMENDED
+  const {
+    queueOperation,
+    isSaving,
+    lastSaved,
+    error: saveError,
+    queueSize,
+  } = useOperationQueue({
+    templateId: currentTemplateId,
+    templateVersion,
+    enabled: !!currentTemplateId,
+    delay: 2000,
+    onSuccess: (newVersion) => {
+      setTemplateVersion(newVersion);
+      console.log('[App] Template saved with version:', newVersion);
+    },
+    onVersionConflict: (currentVer, requestedVer) => {
+      console.error('[App] Version conflict!', {
+        current: currentVer,
+        requested: requestedVer,
+      });
+      alert(
+        `Template was modified elsewhere. Please reload. (Server version: ${currentVer}, Your version: ${requestedVer})`
+      );
+    },
+  });
+
+  // Enhanced dispatch that generates operations for backend sync
+  // This captures the CURRENT state before the action is applied
+  const dispatch = (action: any) => {
+    console.log('[App] Dispatch called:', action.type, 'Template ID:', currentTemplateId);
+
+    // Capture state BEFORE the action
+    const stateBeforeAction = state;
+
+    // Dispatch the action to update local state
+    baseDispatch(action);
+
+    // Generate operations for backend sync (if applicable)
+    // Use the state BEFORE action, because operation generator
+    // needs to find elements in the current state
+    if (currentTemplateId && operationGenerator.shouldSync(action)) {
+      console.log('[App] Will generate operations for:', action.type);
+      // Wait for next tick to get the UPDATED state after reducer runs
+      setTimeout(() => {
+        // Now we need to get the updated state
+        // Since state is stale here, we'll generate based on pre-state
+        // The operation generator will use the action payload
+        const operations = operationGenerator.fromAction(action, {
+          currentState: stateBeforeAction,
+        });
+
+        if (operations) {
+          queueOperation(operations);
+          console.log('[App] Generated operations:', operations);
+        }
+      }, 0);
+    }
+  };
+
+  // Fallback: Full state sync (for debugging/comparison)
+  // const { isSaving, lastSaved, error: saveError } = useAutoSave(
+  //   state,
+  //   (state) => saveTemplate(state),
+  //   { enabled: !!currentTemplateId, delay: 2000 }
+  // );
+
+  const handleCreateTemplate = async (name: string, description?: string) => {
+    try {
+      const template = await createTemplate(name, description);
+      console.log('Template created:', template.id);
+    } catch (error) {
+      console.error('Failed to create template:', error);
+    }
+  };
+
+  const handleOpenTemplate = async (templateId: string) => {
+    try {
+      const partialState = await loadTemplate(templateId);
+
+      // Merge the loaded template data with current state
+      // This replaces pages and audioLayers while keeping UI state
+      if (partialState.pages) {
+        dispatch({ type: 'LOAD_TEMPLATE', data: partialState });
+      }
+
+      console.log('Template loaded:', templateId);
+    } catch (error) {
+      console.error('Failed to load template:', error);
+      throw error; // Re-throw to show error in UI
+    }
+  };
 
   const activePage = state.pages.find(p => p.id === state.activePageId);
   let pageStartTime = 0;
@@ -340,6 +454,23 @@ const App = () => {
         onRedo={() => dispatch({ type: 'REDO' })}
         onExportVideo={() => exportVideo(state.pages, state.audioLayers)}
         onExportJSON={exportToJSON}
+        saveIndicator={
+          <SaveIndicator
+            isSaving={isSaving}
+            lastSaved={lastSaved}
+            error={saveError}
+            templateName={templateName}
+          />
+        }
+        openTemplateBtn={
+          <OpenTemplateBtn
+            onOpen={handleOpenTemplate}
+            onListTemplates={listTemplates}
+          />
+        }
+        createTemplateBtn={
+          <CreateTemplateBtn onCreate={handleCreateTemplate} />
+        }
       />
 
       <div className="flex-1 flex overflow-hidden">

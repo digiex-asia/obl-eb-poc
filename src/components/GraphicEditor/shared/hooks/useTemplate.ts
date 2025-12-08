@@ -13,12 +13,14 @@ interface AppState {
 interface UseTemplateReturn {
   currentTemplateId: string | null;
   templateName: string;
+  templateVersion: number;
   isLoading: boolean;
   error: Error | null;
   createTemplate: (name: string, description?: string) => Promise<Template>;
   loadTemplate: (id: string) => Promise<Partial<AppState>>;
   saveTemplate: (state: AppState) => Promise<Template>;
   listTemplates: () => Promise<Template[]>;
+  setTemplateVersion: (version: number) => void;
 }
 
 /**
@@ -41,6 +43,7 @@ export const useTemplate = (initialState: AppState): UseTemplateReturn => {
     null
   );
   const [templateName, setTemplateName] = useState('Untitled Template');
+  const [templateVersion, setTemplateVersion] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -66,6 +69,7 @@ export const useTemplate = (initialState: AppState): UseTemplateReturn => {
 
         setCurrentTemplateId(template.id);
         setTemplateName(name);
+        setTemplateVersion(template.version);
 
         console.log('[useTemplate] Template created:', template.id);
         return template;
@@ -96,6 +100,7 @@ export const useTemplate = (initialState: AppState): UseTemplateReturn => {
 
         setCurrentTemplateId(id);
         setTemplateName(template.name);
+        setTemplateVersion(template.version);
 
         // Convert DesignData to partial AppState
         const partialState = mappers.fromDesignData(
@@ -174,11 +179,13 @@ export const useTemplate = (initialState: AppState): UseTemplateReturn => {
   return {
     currentTemplateId,
     templateName,
+    templateVersion,
     isLoading,
     error,
     createTemplate,
     loadTemplate,
     saveTemplate,
     listTemplates,
+    setTemplateVersion,
   };
 };

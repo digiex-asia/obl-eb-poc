@@ -102,15 +102,36 @@ export interface UpdateTemplateDto {
   designData?: DesignData;
 }
 
-// Operation Types (for future partial updates)
-export interface Operation {
-  type: string;
-  path: string;
-  value?: unknown;
-  oldValue?: unknown;
+// Operation Types for partial updates
+export type OperationType =
+  | 'add_element'
+  | 'update_element'
+  | 'delete_element'
+  | 'move_element'
+  | 'resize_element'
+  | 'rotate_element'
+  | 'update_element_props'
+  | 'add_page'
+  | 'update_page'
+  | 'delete_page'
+  | 'reorder_pages'
+  | 'update_canvas'
+  | 'add_audio_clip'
+  | 'update_audio_clip'
+  | 'delete_audio_clip';
+
+export interface OperationTarget {
+  pageId?: string;
+  elementId?: string;
+  audioLayerId?: string;
+  clipId?: string;
 }
 
-export interface ApplyOperationDto {
-  operations: Operation[];
-  version: number;
+export interface Operation {
+  id: string;
+  type: OperationType;
+  target: OperationTarget;
+  payload: any;
+  timestamp: number;
+  userId?: string;
 }
