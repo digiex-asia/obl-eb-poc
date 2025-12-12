@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Page, DesignElement } from '../../../shared/model/types';
 import type { Action } from '../../../shared/model/store';
 import {
@@ -8,6 +8,7 @@ import {
   HANDLE_SIZE,
   ROTATE_HANDLE_OFFSET,
 } from '../../../shared/lib/constants';
+import { buildSnapTargets, calculateGroupSnap, calculateDistanceMeasurements } from '../lib/snapping';
 
 const useCanvasEngine = (
   canvasRef: React.RefObject<HTMLCanvasElement>,
@@ -61,6 +62,13 @@ const useCanvasEngine = (
 
   // Store initial positions of all selected elements for multi-element dragging
   const initialElementPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Snap guides state
+  const [snapGuides, setSnapGuides] = useState<{
+    x: number[];
+    y: number[];
+    distances: Array<{ x1: number; y1: number; x2: number; y2: number; value: number; type: 'horizontal' | 'vertical' }>;
+  }>({ x: [], y: [], distances: [] });
 
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
   const getImg = (src: string) => {
@@ -416,13 +424,102 @@ const useCanvasEngine = (
         ctx.setLineDash([]);
       }
 
+      // Draw snap guides
+      if (!isPlaying && (snapGuides.x.length > 0 || snapGuides.y.length > 0 || snapGuides.distances.length > 0)) {
+        ctx.save();
+        ctx.strokeStyle = '#ec4899'; // Pink guide color
+        ctx.lineWidth = 1 / zoom;
+        ctx.setLineDash([4 / zoom, 4 / zoom]);
+
+        // Draw vertical guides
+        snapGuides.x.forEach(x => {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, CANVAS_HEIGHT);
+          ctx.stroke();
+        });
+
+        // Draw horizontal guides
+        snapGuides.y.forEach(y => {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(CANVAS_WIDTH, y);
+          ctx.stroke();
+        });
+
+        ctx.setLineDash([]);
+
+        // Draw distance measurements
+        snapGuides.distances.forEach(dist => {
+          ctx.strokeStyle = '#10b981'; // Green color for distance lines
+          ctx.fillStyle = '#10b981';
+          ctx.lineWidth = 1 / zoom;
+
+          // Draw line
+          ctx.beginPath();
+          ctx.moveTo(dist.x1, dist.y1);
+          ctx.lineTo(dist.x2, dist.y2);
+          ctx.stroke();
+
+          // Draw end caps
+          const capSize = 4 / zoom;
+          if (dist.type === 'horizontal') {
+            // Vertical caps at ends
+            ctx.beginPath();
+            ctx.moveTo(dist.x1, dist.y1 - capSize);
+            ctx.lineTo(dist.x1, dist.y1 + capSize);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(dist.x2, dist.y2 - capSize);
+            ctx.lineTo(dist.x2, dist.y2 + capSize);
+            ctx.stroke();
+          } else {
+            // Horizontal caps at ends
+            ctx.beginPath();
+            ctx.moveTo(dist.x1 - capSize, dist.y1);
+            ctx.lineTo(dist.x1 + capSize, dist.y1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(dist.x2 - capSize, dist.y2);
+            ctx.lineTo(dist.x2 + capSize, dist.y2);
+            ctx.stroke();
+          }
+
+          // Draw distance label
+          const midX = (dist.x1 + dist.x2) / 2;
+          const midY = (dist.y1 + dist.y2) / 2;
+          const label = `${dist.value}px`;
+
+          ctx.font = `${12 / zoom}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Draw label background
+          const metrics = ctx.measureText(label);
+          const padding = 4 / zoom;
+          ctx.fillStyle = 'white';
+          ctx.fillRect(
+            midX - metrics.width / 2 - padding,
+            midY - 6 / zoom - padding,
+            metrics.width + padding * 2,
+            12 / zoom + padding * 2
+          );
+
+          // Draw label text
+          ctx.fillStyle = '#10b981';
+          ctx.fillText(label, midX, midY);
+        });
+
+        ctx.restore();
+      }
+
       ctx.restore();
       animationFrame = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animationFrame);
-  }, [page, selectedId, selectedIds, isPlaying, currentTime, zoom, pan, previewAnimation]);
+  }, [page, selectedId, selectedIds, isPlaying, currentTime, zoom, pan, previewAnimation, snapGuides]);
 
   // Input Handling
   useEffect(() => {
@@ -662,9 +759,38 @@ const useCanvasEngine = (
         handle,
       } = dragInfo.current;
 
-      if (dragInfo.current.type === 'move') {
-        const dx = mouse.x - startX;
-        const dy = mouse.y - startY;
+      if (dragInfo.current.type === 'move' && page) {
+        let dx = mouse.x - startX;
+        let dy = mouse.y - startY;
+
+        // Get selected elements for snapping
+        const selectedElements = Array.from(initialElementPositions.current.keys())
+          .map(elId => page.elements.find(e => e.id === elId))
+          .filter(Boolean) as DesignElement[];
+
+        // Apply snapping
+        const snapTargets = buildSnapTargets(page.elements, selectedIds);
+        const snapResult = calculateGroupSnap(selectedElements, dx, dy, snapTargets.x, snapTargets.y);
+
+        // Update snap guides
+        const distances = calculateDistanceMeasurements(
+          selectedElements.map(el => {
+            const initialPos = initialElementPositions.current.get(el.id)!;
+            return { ...el, x: initialPos.x + snapResult.dx, y: initialPos.y + snapResult.dy };
+          }),
+          page.elements,
+          selectedIds
+        );
+
+        setSnapGuides({
+          x: snapResult.guidesX,
+          y: snapResult.guidesY,
+          distances
+        });
+
+        // Use snapped dx/dy
+        dx = snapResult.dx;
+        dy = snapResult.dy;
 
         // Move all selected elements together if multiple are selected
         if (initialElementPositions.current.size > 1) {
@@ -811,6 +937,9 @@ const useCanvasEngine = (
       }
 
       dragInfo.current.active = false;
+
+      // Clear snap guides when drag ends
+      setSnapGuides({ x: [], y: [], distances: [] });
     };
 
     const handleContextMenu = (e: MouseEvent) => {
