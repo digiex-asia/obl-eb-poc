@@ -26,12 +26,17 @@ import { operationGenerator } from '../shared/lib/operationGenerator';
 import { CreateTemplateBtn } from '../features/template-manager/ui/CreateTemplateBtn';
 import { SaveIndicator } from '../features/template-manager/ui/SaveIndicator';
 import { OpenTemplateBtn } from '../features/template-manager/ui/OpenTemplateBtn';
+import { addImageWithRatio } from '../features/sidebar/lib/imageHelpers';
+import DebugPanel from '../features/canvas/ui/DebugPanel';
+import ContextToolbar from '../features/canvas/ui/ContextToolbar';
+import { Bug } from 'lucide-react';
 
 const App = () => {
   const [state, baseDispatch] = useReducer(reducer, initialState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderTick, setRenderTick] = useState(0);
+  const [debugMode, setDebugMode] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [previewAnim, setPreviewAnim] = useState<{
     id: string;
@@ -246,16 +251,35 @@ const App = () => {
         e.preventDefault();
         dispatch({ type: 'ADD_PAGE' });
       }
+      // Duplicate: Cmd+D
       if (cmd && e.key === 'd') {
         e.preventDefault();
-        dispatch({ type: 'DUPLICATE_PAGE' });
+        // Context-aware duplication: element if selected, otherwise page
+        if (state.selectedIds.length > 0) {
+          dispatch({ type: 'DUPLICATE_ELEMENT' });
+        } else {
+          dispatch({ type: 'DUPLICATE_PAGE' });
+        }
       }
+
+      // Copy: Cmd+C
+      if (cmd && e.key === 'c' && state.selectedIds.length > 0) {
+        e.preventDefault();
+        dispatch({ type: 'COPY_ELEMENTS' });
+      }
+
+      // Paste: Cmd+V
+      if (cmd && e.key === 'v') {
+        e.preventDefault();
+        dispatch({ type: 'PASTE_ELEMENTS' });
+      }
+
+      // Delete: Delete or Backspace
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (state.selectedElementId) {
+        if (state.selectedIds.length > 0) {
           e.preventDefault();
           dispatch({ type: 'DELETE_ELEMENT' });
-        }
-        if (state.selectedAudioId) {
+        } else if (state.selectedAudioId) {
           e.preventDefault();
           dispatch({ type: 'DELETE_AUDIO_CLIP', id: state.selectedAudioId });
         }
@@ -269,6 +293,20 @@ const App = () => {
       ) {
         e.preventDefault();
         dispatch({ type: 'SET_SPACE_PRESSED', pressed: true });
+      }
+
+      // Group/Ungroup shortcuts
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g' && !e.shiftKey) {
+        if (state.selectedIds.length >= 2) {
+          e.preventDefault();
+          dispatch({ type: 'GROUP_ELEMENTS' });
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g' && e.shiftKey) {
+        if (state.selectedIds.length > 0) {
+          e.preventDefault();
+          dispatch({ type: 'UNGROUP_ELEMENTS' });
+        }
       }
     };
 
@@ -284,7 +322,7 @@ const App = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [state.selectedElementId, state.selectedAudioId]);
+  }, [state.selectedElementId, state.selectedAudioId, state.selectedIds]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -308,26 +346,23 @@ const App = () => {
     const finalY = rawY + CANVAS_HEIGHT / 2;
 
     if (type === 'image' && src) {
-      const img = new Image();
-      img.src = src;
-      img.onload = () => {
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        if (w > 400) {
-          const ratio = 400 / w;
-          w = 400;
-          h = h * ratio;
-        }
-        dispatch({
-          type: 'ADD_ELEMENT',
-          elementType: 'image',
-          src,
-          x: finalX - w / 2,
-          y: finalY - h / 2,
-          width: w,
-          height: h,
-        });
-      };
+      // Use addImageWithRatio to preserve aspect ratio and center on drop point
+      addImageWithRatio({
+        src,
+        dropX: finalX,
+        dropY: finalY,
+        onComplete: attrs => {
+          dispatch({
+            type: 'ADD_ELEMENT',
+            elementType: 'image',
+            src: attrs.src,
+            width: attrs.width,
+            height: attrs.height,
+            x: attrs.x,
+            y: attrs.y,
+          });
+        },
+      });
     } else {
       dispatch({
         type: 'ADD_ELEMENT',
@@ -343,6 +378,7 @@ const App = () => {
     containerRef,
     activePage,
     state.selectedElementId,
+    state.selectedIds,
     state.isPlaying,
     state.currentTime,
     state.zoom,
@@ -454,6 +490,7 @@ const App = () => {
         onRedo={() => dispatch({ type: 'REDO' })}
         onExportVideo={() => exportVideo(state.pages, state.audioLayers)}
         onExportJSON={exportToJSON}
+        onZoomChange={(zoom: number) => dispatch({ type: 'SET_ZOOM', zoom })}
         saveIndicator={
           <SaveIndicator
             isSaving={isSaving}
@@ -477,9 +514,27 @@ const App = () => {
         <Sidebar
           activeTab={state.activeTab}
           onSetTab={(tab: any) => dispatch({ type: 'SET_TAB', tab })}
-          onAddElement={(type: ElementType, src?: string) =>
-            dispatch({ type: 'ADD_ELEMENT', elementType: type, src })
-          }
+          onAddElement={(type: ElementType, src?: string) => {
+            // Use addImageWithRatio for images to preserve aspect ratio
+            if (type === 'image' && src) {
+              addImageWithRatio({
+                src,
+                onComplete: attrs => {
+                  dispatch({
+                    type: 'ADD_ELEMENT',
+                    elementType: type,
+                    src: attrs.src,
+                    width: attrs.width,
+                    height: attrs.height,
+                    x: attrs.x,
+                    y: attrs.y,
+                  });
+                },
+              });
+            } else {
+              dispatch({ type: 'ADD_ELEMENT', elementType: type, src });
+            }
+          }}
           selectedElement={selectedElement}
           onAddAudio={(track: any) => {
             dispatch({
@@ -509,6 +564,22 @@ const App = () => {
             onDrop={handleDrop}
           />
 
+          {/* Debug Mode Toggle */}
+          <button
+            onClick={() => setDebugMode(!debugMode)}
+            className={`absolute top-4 right-4 p-2 rounded-lg transition-all z-40 ${
+              debugMode
+                ? 'bg-purple-500 text-white shadow-lg'
+                : 'bg-white/90 text-gray-700 hover:bg-white shadow'
+            }`}
+            title="Toggle Debug Mode"
+          >
+            <Bug size={18} />
+          </button>
+
+          {/* Debug Panel */}
+          {debugMode && <DebugPanel state={state} activePage={activePage} />}
+
           <ContextMenu
             contextMenu={state.contextMenu}
             onDuplicate={(id: string) => dispatch({ type: 'COPY_ELEMENT', id })}
@@ -517,6 +588,15 @@ const App = () => {
               dispatch({ type: 'DELETE_AUDIO_CLIP', id })
             }
           />
+
+          {/* Context Toolbar for selected elements */}
+          {activePage && (
+            <ContextToolbar
+              selectedIds={state.selectedIds}
+              page={activePage}
+              dispatch={dispatch}
+            />
+          )}
 
           <Timeline
             pages={state.pages}
@@ -597,22 +677,47 @@ const App = () => {
         </div>
       </div>
 
-      {/* Portals for Properties */}
-      {selectedElement &&
+      {/* Portals for Properties - DISABLED, using ContextToolbar instead */}
+      {/* {selectedElement &&
         propertiesPortalTarget &&
         createPortal(
           <PropertiesContent
             element={selectedElement}
-            onChange={(id: string, attrs: any) =>
-              dispatch({ type: 'UPDATE_ELEMENT', id, attrs })
+            onChange={(id: string, attrs: any, animation?: any) =>
+              dispatch({ type: 'UPDATE_ELEMENT', id, attrs, animation })
             }
             onPreviewAnim={setPreviewAnim}
             onCheckpoint={() => dispatch({ type: 'CAPTURE_CHECKPOINT' })}
           />,
           propertiesPortalTarget
+        )} */}
+
+      {/* Element Animation Settings */}
+      {selectedElement &&
+        pageAnimPortalTarget &&
+        state.activeTab === 'animation' &&
+        createPortal(
+          <AnimationControl
+            value={selectedElement.animation}
+            onChange={(anim: any) =>
+              dispatch({
+                type: 'UPDATE_ELEMENT',
+                id: selectedElement.id,
+                attrs: {},
+                animation: anim,
+              })
+            }
+            options={PAGE_ANIMATIONS}
+            onPreview={(type: string) =>
+              setPreviewAnim(type ? { id: selectedElement.id, type } : null)
+            }
+          />,
+          pageAnimPortalTarget
         )}
 
-      {activePage &&
+      {/* Page Animation Settings (when no element selected) */}
+      {!selectedElement &&
+        activePage &&
         pageAnimPortalTarget &&
         state.activeTab === 'animation' &&
         createPortal(
