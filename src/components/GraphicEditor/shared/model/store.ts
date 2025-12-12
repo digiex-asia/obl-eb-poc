@@ -8,6 +8,7 @@ import type {
   AudioLayer,
   AnimationSettings,
 } from './types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../lib/constants';
 
 // --- 3. STATE & REDUCER ---
 type Action =
@@ -34,9 +35,15 @@ type Action =
       animation?: Partial<AnimationSettings>;
       saveHistory?: boolean; // Optional flag to force save
     }
+  | {
+      type: 'BATCH_UPDATE_ELEMENTS';
+      updates: { id: string; attrs: Partial<DesignElement> }[];
+    }
   | { type: 'UPDATE_PAGE'; id: string; attrs: Partial<Page> }
-  | { type: 'SELECT_ELEMENT'; id: string | null }
+  | { type: 'SELECT_ELEMENT'; id: string | null; append?: boolean }
+  | { type: 'SELECT_MULTIPLE'; ids: string[] }
   | { type: 'SELECT_AUDIO'; id: string | null }
+  | { type: 'DUPLICATE_ELEMENT'; id?: string } // Duplicate selected element or specified id
   | { type: 'DELETE_ELEMENT'; id?: string }
   | { type: 'SET_PLAYING'; isPlaying: boolean }
   | { type: 'SET_TAB'; tab: AppState['activeTab'] }
@@ -85,7 +92,15 @@ type Action =
   | { type: 'START_EXPORT' }
   | { type: 'UPDATE_EXPORT_PROGRESS'; progress: number }
   | { type: 'FINISH_EXPORT' }
-  | { type: 'LOAD_TEMPLATE'; data: Partial<AppState> };
+  | { type: 'LOAD_TEMPLATE'; data: Partial<AppState> }
+  | { type: 'GROUP_ELEMENTS' }
+  | { type: 'UNGROUP_ELEMENTS' }
+  | {
+      type: 'ALIGN_ELEMENTS';
+      alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
+    }
+  | { type: 'COPY_ELEMENTS' } // Copy selected elements to clipboard
+  | { type: 'PASTE_ELEMENTS' }; // Paste clipboard elements
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -148,6 +163,7 @@ const initialState: AppState = {
   future: [],
   activePageId: '',
   selectedElementId: null,
+  selectedIds: [],
   selectedAudioId: null,
   isPlaying: false,
   zoom: 0.8,
@@ -161,6 +177,7 @@ const initialState: AppState = {
   isSpacePressed: false,
   isExporting: false,
   exportProgress: 0,
+  clipboard: [],
 };
 initialState.activePageId = initialState.pages[0].id;
 
@@ -301,6 +318,20 @@ const reducer = (state: AppState, action: Action): AppState => {
           if (action.elementType === 'text' && !action.width) {
             newEl.width = 300;
             newEl.height = 50;
+            // Initialize rich text properties
+            newEl.valueList = [
+              {
+                text: 'Add Text',
+                fontSize: 32,
+                fontFamily: 'Arial',
+                fill: '#000000',
+              },
+            ];
+            newEl.fontFamily = 'Arial';
+            newEl.align = 'left';
+            newEl.lineHeight = 1.2;
+            newEl.letterSpacing = 0;
+            newEl.verticalAlign = 'top';
           }
           return { ...p, elements: [...p.elements, newEl] };
         }),
@@ -330,6 +361,22 @@ const reducer = (state: AppState, action: Action): AppState => {
           };
         }),
       };
+    case 'BATCH_UPDATE_ELEMENTS':
+      // Batch update multiple elements with different attributes efficiently
+      return {
+        ...state,
+        pages: state.pages.map(p => {
+          if (p.id !== state.activePageId) return p;
+          const updateMap = new Map(action.updates.map(u => [u.id, u.attrs]));
+          return {
+            ...p,
+            elements: p.elements.map(el => {
+              const updates = updateMap.get(el.id);
+              return updates ? { ...el, ...updates } : el;
+            }),
+          };
+        }),
+      };
     case 'UPDATE_PAGE':
       // Assuming Page updates (bg color, animation) are discrete enough to save history
       // Or we can rely on `onFocus` checkpointing in UI. Let's auto-save for now as it's safer.
@@ -340,25 +387,130 @@ const reducer = (state: AppState, action: Action): AppState => {
           p.id === action.id ? { ...p, ...action.attrs } : p
         ),
       };
-    case 'SELECT_ELEMENT':
-      return { ...state, selectedElementId: action.id, selectedAudioId: null };
+    case 'SELECT_ELEMENT': {
+      if (action.id === null) {
+        return {
+          ...state,
+          selectedElementId: null,
+          selectedIds: [],
+          selectedAudioId: null,
+        };
+      }
+
+      // Check for Group logic
+      const page = state.pages.find(p => p.id === state.activePageId);
+      const clickedEl = page?.elements.find(e => e.id === action.id);
+
+      // If element belongs to a group, select the whole group
+      let idsToSelect = [action.id];
+      if (clickedEl?.groupId) {
+        idsToSelect =
+          page?.elements
+            .filter(e => e.groupId === clickedEl.groupId)
+            .map(e => e.id) || [action.id];
+      }
+
+      if (action.append) {
+        const newSelection = new Set(state.selectedIds);
+        idsToSelect.forEach(id => {
+          if (newSelection.has(id)) newSelection.delete(id);
+          else newSelection.add(id);
+        });
+        const finalIds = Array.from(newSelection);
+        return {
+          ...state,
+          selectedIds: finalIds,
+          selectedElementId: finalIds.length === 1 ? finalIds[0] : null,
+          selectedAudioId: null,
+        };
+      }
+
+      return {
+        ...state,
+        selectedElementId: idsToSelect.length === 1 ? idsToSelect[0] : null,
+        selectedIds: idsToSelect,
+        selectedAudioId: null,
+      };
+    }
+    case 'SELECT_MULTIPLE':
+      return {
+        ...state,
+        selectedIds: action.ids,
+        selectedElementId: action.ids.length === 1 ? action.ids[0] : null,
+        selectedAudioId: null,
+      };
     case 'SELECT_AUDIO':
       return { ...state, selectedAudioId: action.id, selectedElementId: null };
-    case 'DELETE_ELEMENT':
-      const targetId = action.id || state.selectedElementId;
-      if (!targetId) return state;
+    case 'DUPLICATE_ELEMENT': {
+      // Support both single and multi-selection duplication
+      const idsToDuplicate =
+        state.selectedIds.length > 0
+          ? state.selectedIds
+          : state.selectedElementId
+            ? [state.selectedElementId]
+            : [];
+
+      if (idsToDuplicate.length === 0) return state;
+
+      const stateWithHistoryDup = pushHistory(state);
+      const newElementIds: string[] = [];
+
+      const updatedPages = stateWithHistoryDup.pages.map(p => {
+        if (p.id !== state.activePageId) return p;
+
+        const elementsToDuplicate = p.elements.filter(el =>
+          idsToDuplicate.includes(el.id)
+        );
+        if (elementsToDuplicate.length === 0) return p;
+
+        // Create duplicates with new IDs and offset positions
+        const duplicatedElements: DesignElement[] = elementsToDuplicate.map(
+          el => {
+            const newId = generateId();
+            newElementIds.push(newId);
+            return {
+              ...el,
+              id: newId,
+              x: el.x + 20,
+              y: el.y + 20,
+            };
+          }
+        );
+
+        return { ...p, elements: [...p.elements, ...duplicatedElements] };
+      });
+
+      return {
+        ...stateWithHistoryDup,
+        pages: updatedPages,
+        selectedElementId: newElementIds.length === 1 ? newElementIds[0] : null,
+        selectedIds: newElementIds,
+      };
+    }
+    case 'DELETE_ELEMENT': {
+      // Support both single and multi-selection deletion
+      const idsToDelete =
+        state.selectedIds.length > 0
+          ? state.selectedIds
+          : state.selectedElementId
+            ? [state.selectedElementId]
+            : [];
+
+      if (idsToDelete.length === 0) return state;
+
       const stateWithHistoryDE = pushHistory(state);
       return {
         ...stateWithHistoryDE,
         pages: stateWithHistoryDE.pages.map(p =>
           p.id === state.activePageId
-            ? { ...p, elements: p.elements.filter(e => e.id !== targetId) }
+            ? { ...p, elements: p.elements.filter(e => !idsToDelete.includes(e.id)) }
             : p
         ),
-        selectedElementId:
-          state.selectedElementId === targetId ? null : state.selectedElementId,
+        selectedElementId: null,
+        selectedIds: [],
         contextMenu: { ...state.contextMenu, visible: false },
       };
+    }
     case 'COPY_ELEMENT':
       const pageIdx = state.pages.findIndex(p => p.id === state.activePageId);
       if (pageIdx === -1) return state;
@@ -539,6 +691,145 @@ const reducer = (state: AppState, action: Action): AppState => {
       return { ...state, exportProgress: action.progress };
     case 'FINISH_EXPORT':
       return { ...state, isExporting: false, exportProgress: 0 };
+    case 'GROUP_ELEMENTS': {
+      if (state.selectedIds.length < 2) return state;
+      const stateWithHistoryGE = pushHistory(state);
+      const newGroupId = generateId();
+      return {
+        ...stateWithHistoryGE,
+        pages: stateWithHistoryGE.pages.map(p => {
+          if (p.id !== state.activePageId) return p;
+          return {
+            ...p,
+            elements: p.elements.map(el =>
+              state.selectedIds.includes(el.id)
+                ? { ...el, groupId: newGroupId }
+                : el
+            ),
+          };
+        }),
+      };
+    }
+    case 'UNGROUP_ELEMENTS': {
+      if (state.selectedIds.length === 0) return state;
+      const stateWithHistoryUGE = pushHistory(state);
+      return {
+        ...stateWithHistoryUGE,
+        pages: stateWithHistoryUGE.pages.map(p => {
+          if (p.id !== state.activePageId) return p;
+          return {
+            ...p,
+            elements: p.elements.map(el =>
+              state.selectedIds.includes(el.id)
+                ? { ...el, groupId: undefined }
+                : el
+            ),
+          };
+        }),
+      };
+    }
+    case 'ALIGN_ELEMENTS': {
+      const page = state.pages.find(p => p.id === state.activePageId);
+      if (!page || state.selectedIds.length === 0) return state;
+
+      const stateWithHistoryAE = pushHistory(state);
+      const elements = page.elements.filter(e =>
+        state.selectedIds.includes(e.id)
+      );
+      if (elements.length === 0) return stateWithHistoryAE;
+
+      const minX = Math.min(...elements.map(e => e.x));
+      const maxX = Math.max(...elements.map(e => e.x + e.width));
+      const minY = Math.min(...elements.map(e => e.y));
+      const maxY = Math.max(...elements.map(e => e.y + e.height));
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+
+      let newElements = [...page.elements];
+
+      elements.forEach(el => {
+        let updates: Partial<DesignElement> = {};
+        if (state.selectedIds.length === 1) {
+          // Align to canvas
+          if (action.alignType === 'left') updates.x = 0;
+          if (action.alignType === 'center')
+            updates.x = (CANVAS_WIDTH - el.width) / 2;
+          if (action.alignType === 'right') updates.x = CANVAS_WIDTH - el.width;
+          if (action.alignType === 'top') updates.y = 0;
+          if (action.alignType === 'middle')
+            updates.y = (CANVAS_HEIGHT - el.height) / 2;
+          if (action.alignType === 'bottom')
+            updates.y = CANVAS_HEIGHT - el.height;
+        } else {
+          // Align to selection group
+          if (action.alignType === 'left') updates.x = minX;
+          if (action.alignType === 'center') updates.x = midX - el.width / 2;
+          if (action.alignType === 'right') updates.x = maxX - el.width;
+          if (action.alignType === 'top') updates.y = minY;
+          if (action.alignType === 'middle') updates.y = midY - el.height / 2;
+          if (action.alignType === 'bottom') updates.y = maxY - el.height;
+        }
+        if (Object.keys(updates).length > 0) {
+          newElements = newElements.map(e =>
+            e.id === el.id ? { ...e, ...updates } : e
+          );
+        }
+      });
+
+      return {
+        ...stateWithHistoryAE,
+        pages: stateWithHistoryAE.pages.map(p =>
+          p.id === state.activePageId ? { ...p, elements: newElements } : p
+        ),
+      };
+    }
+    case 'COPY_ELEMENTS': {
+      // Copy selected elements to clipboard
+      const page = state.pages.find(p => p.id === state.activePageId);
+      if (!page || state.selectedIds.length === 0) return state;
+
+      const elementsToCopy = page.elements.filter(e =>
+        state.selectedIds.includes(e.id)
+      );
+
+      return {
+        ...state,
+        clipboard: elementsToCopy,
+      };
+    }
+    case 'PASTE_ELEMENTS': {
+      // Paste clipboard elements
+      if (state.clipboard.length === 0) return state;
+
+      const stateWithHistoryPaste = pushHistory(state);
+      const newElementIds: string[] = [];
+
+      const updatedPages = stateWithHistoryPaste.pages.map(p => {
+        if (p.id !== state.activePageId) return p;
+
+        // Create new elements from clipboard with new IDs and offset positions
+        const pastedElements: DesignElement[] = state.clipboard.map(el => {
+          const newId = generateId();
+          newElementIds.push(newId);
+          return {
+            ...el,
+            id: newId,
+            x: el.x + 20,
+            y: el.y + 20,
+            groupId: undefined, // Clear group ID on paste
+          };
+        });
+
+        return { ...p, elements: [...p.elements, ...pastedElements] };
+      });
+
+      return {
+        ...stateWithHistoryPaste,
+        pages: updatedPages,
+        selectedElementId: newElementIds.length === 1 ? newElementIds[0] : null,
+        selectedIds: newElementIds,
+      };
+    }
     case 'LOAD_TEMPLATE':
       // Load template data while preserving UI state
       const newState = {
