@@ -98,9 +98,7 @@ type Action =
   | {
       type: 'ALIGN_ELEMENTS';
       alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
-    }
-  | { type: 'COPY_ELEMENTS' } // Copy selected elements to clipboard
-  | { type: 'PASTE_ELEMENTS' }; // Paste clipboard elements
+    };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -177,7 +175,6 @@ const initialState: AppState = {
   isSpacePressed: false,
   isExporting: false,
   exportProgress: 0,
-  clipboard: [],
 };
 initialState.activePageId = initialState.pages[0].id;
 
@@ -442,75 +439,47 @@ const reducer = (state: AppState, action: Action): AppState => {
     case 'SELECT_AUDIO':
       return { ...state, selectedAudioId: action.id, selectedElementId: null };
     case 'DUPLICATE_ELEMENT': {
-      // Support both single and multi-selection duplication
-      const idsToDuplicate =
-        state.selectedIds.length > 0
-          ? state.selectedIds
-          : state.selectedElementId
-            ? [state.selectedElementId]
-            : [];
-
-      if (idsToDuplicate.length === 0) return state;
-
+      const elementIdToDuplicate = action.id || state.selectedElementId;
+      if (!elementIdToDuplicate) return state;
       const stateWithHistoryDup = pushHistory(state);
-      const newElementIds: string[] = [];
-
+      let newElementId: string | null = null;
       const updatedPages = stateWithHistoryDup.pages.map(p => {
         if (p.id !== state.activePageId) return p;
-
-        const elementsToDuplicate = p.elements.filter(el =>
-          idsToDuplicate.includes(el.id)
+        const elementToDuplicate = p.elements.find(
+          el => el.id === elementIdToDuplicate
         );
-        if (elementsToDuplicate.length === 0) return p;
-
-        // Create duplicates with new IDs and offset positions
-        const duplicatedElements: DesignElement[] = elementsToDuplicate.map(
-          el => {
-            const newId = generateId();
-            newElementIds.push(newId);
-            return {
-              ...el,
-              id: newId,
-              x: el.x + 20,
-              y: el.y + 20,
-            };
-          }
-        );
-
-        return { ...p, elements: [...p.elements, ...duplicatedElements] };
+        if (!elementToDuplicate) return p;
+        // Create duplicate with new ID and offset position
+        const duplicatedElement: DesignElement = {
+          ...elementToDuplicate,
+          id: generateId(),
+          x: elementToDuplicate.x + 20,
+          y: elementToDuplicate.y + 20,
+        };
+        newElementId = duplicatedElement.id;
+        return { ...p, elements: [...p.elements, duplicatedElement] };
       });
-
       return {
         ...stateWithHistoryDup,
         pages: updatedPages,
-        selectedElementId: newElementIds.length === 1 ? newElementIds[0] : null,
-        selectedIds: newElementIds,
+        selectedElementId: newElementId,
       };
     }
-    case 'DELETE_ELEMENT': {
-      // Support both single and multi-selection deletion
-      const idsToDelete =
-        state.selectedIds.length > 0
-          ? state.selectedIds
-          : state.selectedElementId
-            ? [state.selectedElementId]
-            : [];
-
-      if (idsToDelete.length === 0) return state;
-
+    case 'DELETE_ELEMENT':
+      const targetId = action.id || state.selectedElementId;
+      if (!targetId) return state;
       const stateWithHistoryDE = pushHistory(state);
       return {
         ...stateWithHistoryDE,
         pages: stateWithHistoryDE.pages.map(p =>
           p.id === state.activePageId
-            ? { ...p, elements: p.elements.filter(e => !idsToDelete.includes(e.id)) }
+            ? { ...p, elements: p.elements.filter(e => e.id !== targetId) }
             : p
         ),
-        selectedElementId: null,
-        selectedIds: [],
+        selectedElementId:
+          state.selectedElementId === targetId ? null : state.selectedElementId,
         contextMenu: { ...state.contextMenu, visible: false },
       };
-    }
     case 'COPY_ELEMENT':
       const pageIdx = state.pages.findIndex(p => p.id === state.activePageId);
       if (pageIdx === -1) return state;
@@ -781,53 +750,6 @@ const reducer = (state: AppState, action: Action): AppState => {
         pages: stateWithHistoryAE.pages.map(p =>
           p.id === state.activePageId ? { ...p, elements: newElements } : p
         ),
-      };
-    }
-    case 'COPY_ELEMENTS': {
-      // Copy selected elements to clipboard
-      const page = state.pages.find(p => p.id === state.activePageId);
-      if (!page || state.selectedIds.length === 0) return state;
-
-      const elementsToCopy = page.elements.filter(e =>
-        state.selectedIds.includes(e.id)
-      );
-
-      return {
-        ...state,
-        clipboard: elementsToCopy,
-      };
-    }
-    case 'PASTE_ELEMENTS': {
-      // Paste clipboard elements
-      if (state.clipboard.length === 0) return state;
-
-      const stateWithHistoryPaste = pushHistory(state);
-      const newElementIds: string[] = [];
-
-      const updatedPages = stateWithHistoryPaste.pages.map(p => {
-        if (p.id !== state.activePageId) return p;
-
-        // Create new elements from clipboard with new IDs and offset positions
-        const pastedElements: DesignElement[] = state.clipboard.map(el => {
-          const newId = generateId();
-          newElementIds.push(newId);
-          return {
-            ...el,
-            id: newId,
-            x: el.x + 20,
-            y: el.y + 20,
-            groupId: undefined, // Clear group ID on paste
-          };
-        });
-
-        return { ...p, elements: [...p.elements, ...pastedElements] };
-      });
-
-      return {
-        ...stateWithHistoryPaste,
-        pages: updatedPages,
-        selectedElementId: newElementIds.length === 1 ? newElementIds[0] : null,
-        selectedIds: newElementIds,
       };
     }
     case 'LOAD_TEMPLATE':

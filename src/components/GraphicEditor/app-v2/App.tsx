@@ -251,35 +251,21 @@ const App = () => {
         e.preventDefault();
         dispatch({ type: 'ADD_PAGE' });
       }
-      // Duplicate: Cmd+D
       if (cmd && e.key === 'd') {
         e.preventDefault();
         // Context-aware duplication: element if selected, otherwise page
-        if (state.selectedIds.length > 0) {
+        if (state.selectedElementId) {
           dispatch({ type: 'DUPLICATE_ELEMENT' });
         } else {
           dispatch({ type: 'DUPLICATE_PAGE' });
         }
       }
-
-      // Copy: Cmd+C
-      if (cmd && e.key === 'c' && state.selectedIds.length > 0) {
-        e.preventDefault();
-        dispatch({ type: 'COPY_ELEMENTS' });
-      }
-
-      // Paste: Cmd+V
-      if (cmd && e.key === 'v') {
-        e.preventDefault();
-        dispatch({ type: 'PASTE_ELEMENTS' });
-      }
-
-      // Delete: Delete or Backspace
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (state.selectedIds.length > 0) {
+        if (state.selectedElementId) {
           e.preventDefault();
           dispatch({ type: 'DELETE_ELEMENT' });
-        } else if (state.selectedAudioId) {
+        }
+        if (state.selectedAudioId) {
           e.preventDefault();
           dispatch({ type: 'DELETE_AUDIO_CLIP', id: state.selectedAudioId });
         }

@@ -13,9 +13,8 @@ export const buildSnapTargets = (
   elements: DesignElement[],
   selectedIds: string[]
 ) => {
-  // Add canvas boundaries and center
-  const snapTargetsX: number[] = [0, CANVAS_WIDTH / 2, CANVAS_WIDTH];
-  const snapTargetsY: number[] = [0, CANVAS_HEIGHT / 2, CANVAS_HEIGHT];
+  const snapTargetsX: number[] = [CANVAS_WIDTH / 2];
+  const snapTargetsY: number[] = [CANVAS_HEIGHT / 2];
 
   elements.forEach(el => {
     if (!selectedIds.includes(el.id)) {
@@ -131,111 +130,4 @@ export const calculateGroupSnap = (
     guidesX: snapX.snapTo !== null ? [snapX.snapTo] : [],
     guidesY: snapY.snapTo !== null ? [snapY.snapTo] : [],
   };
-};
-
-/**
- * Calculate distance measurements between elements
- * Shows spacing when elements are aligned or evenly spaced
- */
-export const calculateDistanceMeasurements = (
-  selectedElements: DesignElement[],
-  allElements: DesignElement[],
-  selectedIds: string[]
-): Array<{ x1: number; y1: number; x2: number; y2: number; value: number; type: 'horizontal' | 'vertical' }> => {
-  if (selectedElements.length === 0) return [];
-
-  const measurements: Array<{ x1: number; y1: number; x2: number; y2: number; value: number; type: 'horizontal' | 'vertical' }> = [];
-  const DISTANCE_THRESHOLD = 200; // Show distances within 200px
-
-  // Calculate bounding box of selected elements
-  let selMinX = Infinity, selMaxX = -Infinity;
-  let selMinY = Infinity, selMaxY = -Infinity;
-
-  selectedElements.forEach(el => {
-    selMinX = Math.min(selMinX, el.x);
-    selMaxX = Math.max(selMaxX, el.x + el.width);
-    selMinY = Math.min(selMinY, el.y);
-    selMaxY = Math.max(selMaxY, el.y + el.height);
-  });
-
-  const selCenterY = (selMinY + selMaxY) / 2;
-  const selCenterX = (selMinX + selMaxX) / 2;
-
-  // Check distances to other elements
-  allElements.forEach(el => {
-    if (selectedIds.includes(el.id)) return;
-
-    const elRight = el.x + el.width;
-    const elBottom = el.y + el.height;
-    const elCenterY = el.y + el.height / 2;
-    const elCenterX = el.x + el.width / 2;
-
-    // Horizontal distances (elements roughly aligned vertically)
-    const verticalOverlap = !(selMaxY < el.y || selMinY > elBottom);
-    if (verticalOverlap) {
-      // Element to the left
-      if (elRight < selMinX) {
-        const distance = selMinX - elRight;
-        if (distance < DISTANCE_THRESHOLD) {
-          measurements.push({
-            x1: elRight,
-            y1: Math.max(selCenterY, elCenterY),
-            x2: selMinX,
-            y2: Math.max(selCenterY, elCenterY),
-            value: Math.round(distance),
-            type: 'horizontal'
-          });
-        }
-      }
-      // Element to the right
-      if (el.x > selMaxX) {
-        const distance = el.x - selMaxX;
-        if (distance < DISTANCE_THRESHOLD) {
-          measurements.push({
-            x1: selMaxX,
-            y1: Math.max(selCenterY, elCenterY),
-            x2: el.x,
-            y2: Math.max(selCenterY, elCenterY),
-            value: Math.round(distance),
-            type: 'horizontal'
-          });
-        }
-      }
-    }
-
-    // Vertical distances (elements roughly aligned horizontally)
-    const horizontalOverlap = !(selMaxX < el.x || selMinX > elRight);
-    if (horizontalOverlap) {
-      // Element above
-      if (elBottom < selMinY) {
-        const distance = selMinY - elBottom;
-        if (distance < DISTANCE_THRESHOLD) {
-          measurements.push({
-            x1: Math.max(selCenterX, elCenterX),
-            y1: elBottom,
-            x2: Math.max(selCenterX, elCenterX),
-            y2: selMinY,
-            value: Math.round(distance),
-            type: 'vertical'
-          });
-        }
-      }
-      // Element below
-      if (el.y > selMaxY) {
-        const distance = el.y - selMaxY;
-        if (distance < DISTANCE_THRESHOLD) {
-          measurements.push({
-            x1: Math.max(selCenterX, elCenterX),
-            y1: selMaxY,
-            x2: Math.max(selCenterX, elCenterX),
-            y2: el.y,
-            value: Math.round(distance),
-            type: 'vertical'
-          });
-        }
-      }
-    }
-  });
-
-  return measurements;
 };
