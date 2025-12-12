@@ -42,21 +42,24 @@ interface NavItem {
 type ExpansionLevel = 0 | 1 | 2;
 
 const navItems: NavItem[] = [
-  { path: '/', label: 'Canvas', icon: <LayoutDashboard size={20} /> },
-  { path: '/konva', label: 'Konva', icon: <Layers size={20} /> },
-  { path: '/skia', label: 'Skia', icon: <Palette size={20} /> },
+  {
+    path: '/',
+    label: 'Editor',
+    icon: <PenTool size={20} />,
+    color: 'text-violet-600',
+  },
   {
     path: '/graphic-old',
-    label: 'Graphic Mono',
+    label: 'Editor Mono',
     icon: <PenTool size={20} />,
     color: 'text-orange-600',
   },
   {
-    path: '/graphic-new',
-    label: 'Graphic FSD',
-    icon: <PenTool size={20} />,
-    color: 'text-violet-600',
+    path: '/canvas-email',
+    label: 'Canvas Email',
+    icon: <LayoutDashboard size={20} />,
   },
+  { path: '/konva', label: 'Konva Email', icon: <Layers size={20} /> },
   {
     path: '/richtext',
     label: 'Rich Text',
@@ -156,11 +159,10 @@ const App = () => {
         <SidebarNavigation level={navLevel} onToggle={handleToggle} />
         <div className="flex-1 overflow-hidden">
           <Routes>
-            <Route path="/" element={<CanvasEditor />} />
-            <Route path="/konva" element={<KonvaEditor />} />
-            <Route path="/skia" element={<SkiaEditor />} />
+            <Route path="/" element={<GraphicEditorNew />} />
             <Route path="/graphic-old" element={<GraphicEditorOld />} />
-            <Route path="/graphic-new" element={<GraphicEditorNew />} />
+            <Route path="/canvas-email" element={<CanvasEditor />} />
+            <Route path="/konva" element={<KonvaEditor />} />
             <Route path="/richtext" element={<RichtextEditor />} />
             <Route path="/text-editor" element={<TextEditor />} />
           </Routes>

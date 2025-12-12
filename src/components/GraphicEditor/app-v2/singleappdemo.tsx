@@ -36,8 +36,8 @@ import {
 const { useEffect, useRef, useState, useReducer, useCallback } = React;
 
 // --- 1. CONSTANTS & ASSETS ---
-const CANVAS_WIDTH = 1080; // Updated to 1080
-const CANVAS_HEIGHT = 1080; // Updated to 1080
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 450;
 const SELECTION_COLOR = '#8b5cf6';
 const GUIDE_COLOR = '#ec4899';
 const HANDLE_SIZE = 10;
@@ -123,6 +123,9 @@ interface AppState {
   zoom: number;
   pan: { x: number; y: number };
   activeTab: 'media' | 'shapes';
+  currentTime: number;
+  timelineHeight: number;
+  timelineZoom: number;
   contextMenu: {
     visible: boolean;
     x: number;
@@ -134,6 +137,9 @@ interface AppState {
 // --- 3. STATE & REDUCER ---
 type Action =
   | { type: 'ADD_PAGE' }
+  | { type: 'DUPLICATE_PAGE' }
+  | { type: 'DELETE_PAGE'; id: string }
+  | { type: 'SELECT_PAGE'; id: string }
   | {
       type: 'ADD_ELEMENT';
       elementType: ElementType;
@@ -148,6 +154,7 @@ type Action =
       type: 'BATCH_UPDATE_ELEMENTS';
       updates: { id: string; attrs: Partial<DesignElement> }[];
     }
+  | { type: 'UPDATE_PAGE'; id: string; attrs: Partial<Page> }
   | { type: 'SELECT_ELEMENT'; id: string | null; append?: boolean }
   | { type: 'SELECT_MULTIPLE'; ids: string[] }
   | { type: 'DELETE_ELEMENT' }
@@ -155,10 +162,16 @@ type Action =
       type: 'ALIGN_ELEMENTS';
       alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
     }
+  | { type: 'SET_PLAYING'; isPlaying: boolean }
   | { type: 'SET_TAB'; tab: AppState['activeTab'] }
   | { type: 'SET_BACKGROUND'; color: string }
   | { type: 'SET_ZOOM'; zoom: number }
   | { type: 'SET_PAN'; pan: { x: number; y: number } }
+  | { type: 'SET_CURRENT_TIME'; time: number }
+  | { type: 'NEXT_PAGE' }
+  | { type: 'SET_TIMELINE_HEIGHT'; height: number }
+  | { type: 'SET_TIMELINE_ZOOM'; zoom: number }
+  | { type: 'UPDATE_PAGE_DURATION'; id: string; duration: number }
   | {
       type: 'OPEN_CONTEXT_MENU';
       x: number;
@@ -166,8 +179,7 @@ type Action =
       elementId: string | null;
     }
   | { type: 'CLOSE_CONTEXT_MENU' }
-  | { type: 'COPY_ELEMENT' }
-  | { type: 'MOVE_ELEMENT_BY'; ids: string[]; dx: number; dy: number }; // New action for keyboard move
+  | { type: 'COPY_ELEMENT' };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -178,9 +190,12 @@ const initialState: AppState = {
   activePageId: '',
   selectedIds: [],
   isPlaying: false,
-  zoom: 0.6, // Default Zoom 0.6
+  zoom: 0.8,
   pan: { x: 0, y: 0 },
   activeTab: 'media',
+  currentTime: 0,
+  timelineHeight: 200,
+  timelineZoom: 40,
   contextMenu: { visible: false, x: 0, y: 0, elementId: null },
 };
 initialState.activePageId = initialState.pages[0].id;
@@ -200,9 +215,37 @@ const reducer = (state: AppState, action: Action): AppState => {
         activePageId: newPage.id,
       };
 
+    case 'DUPLICATE_PAGE': {
+      const idx = state.pages.findIndex(p => p.id === state.activePageId);
+      if (idx === -1) return state;
+      const dup = {
+        ...state.pages[idx],
+        id: generateId(),
+        elements: state.pages[idx].elements.map(e => ({
+          ...e,
+          id: generateId(),
+        })),
+      };
+      const newPages = [...state.pages];
+      newPages.splice(idx + 1, 0, dup);
+      return { ...state, pages: newPages, activePageId: dup.id };
+    }
+
+    case 'DELETE_PAGE':
+      if (state.pages.length <= 1) return state;
+      return {
+        ...state,
+        pages: state.pages.filter(p => p.id !== action.id),
+        activePageId: state.pages[0].id,
+      };
+
     case 'SELECT_PAGE':
-      // Simplified as we removed timeline logic that switched pages
-      return state;
+      return {
+        ...state,
+        activePageId: action.id,
+        selectedIds: [],
+        contextMenu: { ...state.contextMenu, visible: false },
+      };
 
     case 'ADD_ELEMENT':
       return {
@@ -210,15 +253,15 @@ const reducer = (state: AppState, action: Action): AppState => {
         pages: state.pages.map(p => {
           if (p.id !== state.activePageId) return p;
           const w =
-            action.width || (action.elementType === 'image' ? 400 : 200);
+            action.width || (action.elementType === 'image' ? 200 : 100);
           const h =
-            action.height || (action.elementType === 'image' ? 400 : 200);
+            action.height || (action.elementType === 'image' ? 200 : 100);
 
           const newEl: DesignElement = {
             id: generateId(),
             type: action.elementType,
-            x: action.x !== undefined ? action.x : CANVAS_WIDTH / 2 - w / 2,
-            y: action.y !== undefined ? action.y : CANVAS_HEIGHT / 2 - h / 2,
+            x: action.x || CANVAS_WIDTH / 2 - w / 2,
+            y: action.y || CANVAS_HEIGHT / 2 - h / 2,
             width: w,
             height: h,
             contentWidth: w,
@@ -263,22 +306,6 @@ const reducer = (state: AppState, action: Action): AppState => {
               const updates = updateMap.get(el.id);
               return updates ? { ...el, ...updates } : el;
             }),
-          };
-        }),
-      };
-
-    case 'MOVE_ELEMENT_BY':
-      return {
-        ...state,
-        pages: state.pages.map(p => {
-          if (p.id !== state.activePageId) return p;
-          return {
-            ...p,
-            elements: p.elements.map(el =>
-              action.ids.includes(el.id)
-                ? { ...el, x: el.x + action.dx, y: el.y + action.dy }
-                : el
-            ),
           };
         }),
       };
@@ -336,6 +363,14 @@ const reducer = (state: AppState, action: Action): AppState => {
       };
     }
 
+    case 'UPDATE_PAGE':
+      return {
+        ...state,
+        pages: state.pages.map(p =>
+          p.id === action.id ? { ...p, ...action.attrs } : p
+        ),
+      };
+
     case 'SELECT_ELEMENT': {
       if (action.id === null) return { ...state, selectedIds: [] };
       const isSelected = state.selectedIds.includes(action.id);
@@ -390,6 +425,8 @@ const reducer = (state: AppState, action: Action): AppState => {
         contextMenu: { ...state.contextMenu, visible: false },
       };
 
+    case 'SET_PLAYING':
+      return { ...state, isPlaying: action.isPlaying, selectedIds: [] };
     case 'SET_TAB':
       return { ...state, activeTab: action.tab };
     case 'SET_BACKGROUND':
@@ -403,6 +440,32 @@ const reducer = (state: AppState, action: Action): AppState => {
       return { ...state, zoom: action.zoom };
     case 'SET_PAN':
       return { ...state, pan: action.pan };
+    case 'SET_CURRENT_TIME':
+      return { ...state, currentTime: Math.max(0, action.time) };
+    case 'NEXT_PAGE':
+      const nextIdx =
+        (state.pages.findIndex(p => p.id === state.activePageId) + 1) %
+        state.pages.length;
+      return { ...state, activePageId: state.pages[nextIdx].id };
+    case 'SET_TIMELINE_HEIGHT':
+      return {
+        ...state,
+        timelineHeight: Math.max(150, Math.min(600, action.height)),
+      };
+    case 'SET_TIMELINE_ZOOM':
+      return {
+        ...state,
+        timelineZoom: Math.max(10, Math.min(200, action.zoom)),
+      };
+    case 'UPDATE_PAGE_DURATION':
+      return {
+        ...state,
+        pages: state.pages.map(p =>
+          p.id === action.id
+            ? { ...p, duration: Math.max(1, action.duration) }
+            : p
+        ),
+      };
     case 'OPEN_CONTEXT_MENU':
       return {
         ...state,
@@ -472,6 +535,7 @@ const useCanvasEngine = (
     x: [],
     y: [],
   });
+  // NEW: Transient State Map for lag-free dragging
   const transientState = useRef<Map<string, Partial<DesignElement>>>(new Map());
 
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
@@ -590,6 +654,7 @@ const useCanvasEngine = (
 
       // --- Draw Elements ---
       page.elements.forEach(baseEl => {
+        // Merge transient updates if they exist for this element
         const transient = transientState.current.get(baseEl.id);
         const el = transient ? { ...baseEl, ...transient } : baseEl;
 
@@ -603,7 +668,6 @@ const useCanvasEngine = (
         ctx.translate(-el.width / 2, -el.height / 2);
         ctx.globalAlpha = el.opacity;
 
-        // Draw Element Content (Image or Shape)
         if (el.type === 'image' && el.src) {
           ctx.beginPath();
           ctx.rect(0, 0, el.width, el.height);
@@ -729,6 +793,7 @@ const useCanvasEngine = (
 
       // --- Draw Selection ---
       if (selectedIds.length > 0 && !isPlaying) {
+        // USE TRANSIENT STATE FOR BOUNDING BOX CALC
         const selectedEls = page.elements
           .filter(e => selectedIds.includes(e.id))
           .map(e => {
@@ -814,37 +879,6 @@ const useCanvasEngine = (
           ctx.fillStyle = 'white';
           ctx.fill();
           ctx.stroke();
-
-          // --- DEGREE INDICATOR ---
-          if (dragInfo.current.type === 'rotate' && isSingle) {
-            const el = selectedEls[0];
-            const degText = `${Math.round(el.rotation)}°`;
-            ctx.font = '12px sans-serif';
-            const textWidth = ctx.measureText(degText).width;
-            const pad = 6;
-
-            // Position tag above the rotate handle
-            ctx.save();
-            ctx.translate(minX + bw / 2, minY - rotOffset - 25);
-            ctx.rotate((-el.rotation * Math.PI) / 180); // Keep text upright
-
-            ctx.fillStyle = SELECTION_COLOR;
-            ctx.beginPath();
-            ctx.roundRect(
-              -textWidth / 2 - pad,
-              -10,
-              textWidth + pad * 2,
-              20,
-              4
-            );
-            ctx.fill();
-
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(degText, 0, 0);
-            ctx.restore();
-          }
 
           ctx.restore();
         }
@@ -1258,6 +1292,7 @@ const useCanvasEngine = (
             nextCH = targetCH;
           }
 
+          // Use transient state instead of dispatching
           transientState.current.set(id, {
             x: nextX,
             y: nextY,
@@ -1650,6 +1685,94 @@ const Sidebar = ({ activeTab, onSetTab, onAddElement }: any) => {
   );
 };
 
+// --- TIMELINE COMPONENTS ---
+const Timeline = ({
+  pages,
+  activePageId,
+  onSelect,
+  onAdd,
+  onDelete,
+  isPlaying,
+  onTogglePlay,
+  currentTime,
+  height,
+  zoom,
+  onSetZoom,
+}: any) => {
+  return (
+    <div
+      className="flex flex-col bg-white border-t border-gray-200 relative select-none"
+      style={{ height }}
+    >
+      <div className="h-10 flex items-center justify-between px-4 bg-gray-50 border-b border-gray-200 text-gray-700 text-xs">
+        <div className="flex items-center gap-4">
+          <button onClick={onTogglePlay} className="hover:text-violet-600">
+            {isPlaying ? (
+              <Pause size={16} fill="currentColor" />
+            ) : (
+              <Play size={16} fill="currentColor" />
+            )}
+          </button>
+          <span>{currentTime.toFixed(1)}s</span>
+          <div className="flex items-center gap-2">
+            <Minus
+              size={14}
+              className="cursor-pointer"
+              onClick={() => onSetZoom(zoom * 0.9)}
+            />
+            <div className="w-20 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-violet-500"
+                style={{ width: `${(zoom / 200) * 100}%` }}
+              />
+            </div>
+            <Plus
+              size={14}
+              className="cursor-pointer"
+              onClick={() => onSetZoom(zoom * 1.1)}
+            />
+          </div>
+        </div>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1 hover:text-violet-600 border px-2 py-1 rounded bg-white"
+        >
+          <Plus size={12} /> Add Page
+        </button>
+      </div>
+      <div className="flex-1 overflow-x-auto bg-gray-100 relative p-2">
+        <div className="h-24 relative flex gap-1">
+          {pages.map((page: Page) => (
+            <div
+              key={page.id}
+              onClick={() => onSelect(page.id)}
+              style={{ width: page.duration * zoom }}
+              className={`relative h-20 rounded-md border bg-white flex-shrink-0 cursor-pointer overflow-hidden ${activePageId === page.id ? 'border-violet-500 ring-1 ring-violet-500' : 'border-gray-300'}`}
+            >
+              <div className="absolute top-1 left-2 text-[10px] text-gray-500 font-bold">
+                Page
+              </div>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  onDelete(page.id);
+                }}
+                className="absolute top-1 right-1 p-1 text-red-400 hover:text-red-600"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div
+          className="absolute top-0 bottom-0 w-px bg-red-500 z-40 pointer-events-none"
+          style={{ left: currentTime * zoom }}
+        />
+      </div>
+    </div>
+  );
+};
+
 // --- 6. MAIN APP ---
 const App = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -1669,43 +1792,8 @@ const App = () => {
 
   const activePage = state.pages.find(p => p.id === state.activePageId);
 
-  // Helper for adding images with aspect ratio
-  const addImageWithRatio = (src: string, dropX?: number, dropY?: number) => {
-    const img = new Image();
-    img.src = src;
-    img.crossOrigin = 'Anonymous';
-    img.onload = () => {
-      let w = img.naturalWidth;
-      let h = img.naturalHeight;
-      if (w > 400) {
-        const ratio = 400 / w;
-        w = 400;
-        h = h * ratio;
-      }
-
-      let finalX = dropX;
-      let finalY = dropY;
-
-      if (finalX !== undefined) finalX -= w / 2;
-      if (finalY !== undefined) finalY -= h / 2;
-
-      dispatch({
-        type: 'ADD_ELEMENT',
-        elementType: 'image',
-        src,
-        width: w,
-        height: h,
-        x: finalX,
-        y: finalY,
-      });
-    };
-  };
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
-
       if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
         e.preventDefault();
       }
@@ -1719,47 +1807,6 @@ const App = () => {
         if (state.selectedIds.length > 0) {
           e.preventDefault();
           dispatch({ type: 'DELETE_ELEMENT' });
-        }
-      }
-
-      // Keyboard Movement
-      if (state.selectedIds.length > 0) {
-        const step = e.shiftKey ? 10 : 1;
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          dispatch({
-            type: 'MOVE_ELEMENT_BY',
-            ids: state.selectedIds,
-            dx: 0,
-            dy: -step,
-          });
-        }
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          dispatch({
-            type: 'MOVE_ELEMENT_BY',
-            ids: state.selectedIds,
-            dx: 0,
-            dy: step,
-          });
-        }
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          dispatch({
-            type: 'MOVE_ELEMENT_BY',
-            ids: state.selectedIds,
-            dx: -step,
-            dy: 0,
-          });
-        }
-        if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          dispatch({
-            type: 'MOVE_ELEMENT_BY',
-            ids: state.selectedIds,
-            dx: step,
-            dy: 0,
-          });
         }
       }
     };
@@ -1779,18 +1826,13 @@ const App = () => {
     const y =
       (e.clientY - rect.top - rect.height / 2 - state.pan.y) / state.zoom +
       CANVAS_HEIGHT / 2;
-
-    if (type === 'image' && src) {
-      addImageWithRatio(src, x, y);
-    } else {
-      dispatch({
-        type: 'ADD_ELEMENT',
-        elementType: type,
-        src,
-        x: x - 50,
-        y: y - 50,
-      });
-    }
+    dispatch({
+      type: 'ADD_ELEMENT',
+      elementType: type,
+      src,
+      x: x - 50,
+      y: y - 50,
+    });
   };
 
   const handleZoomInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1871,13 +1913,9 @@ const App = () => {
         <Sidebar
           activeTab={state.activeTab}
           onSetTab={(t: any) => dispatch({ type: 'SET_TAB', tab: t })}
-          onAddElement={(type: any, src: any) => {
-            if (type === 'image' && src) {
-              addImageWithRatio(src);
-            } else {
-              dispatch({ type: 'ADD_ELEMENT', elementType: type, src });
-            }
-          }}
+          onAddElement={(type: any, src: any) =>
+            dispatch({ type: 'ADD_ELEMENT', elementType: type, src })
+          }
         />
         {state.selectedIds.length > 0 && activePage && (
           <ContextToolbar
@@ -1957,6 +1995,23 @@ const App = () => {
               </div>
             )}
           </div>
+          <Timeline
+            pages={state.pages}
+            activePageId={state.activePageId}
+            isPlaying={state.isPlaying}
+            currentTime={state.currentTime}
+            height={state.timelineHeight}
+            zoom={state.timelineZoom}
+            onSelect={(id: string) => dispatch({ type: 'SELECT_PAGE', id })}
+            onAdd={() => dispatch({ type: 'ADD_PAGE' })}
+            onDelete={(id: string) => dispatch({ type: 'DELETE_PAGE', id })}
+            onTogglePlay={() =>
+              dispatch({ type: 'SET_PLAYING', isPlaying: !state.isPlaying })
+            }
+            onSetZoom={(z: number) =>
+              dispatch({ type: 'SET_TIMELINE_ZOOM', zoom: z })
+            }
+          />
         </div>
       </div>
     </div>
