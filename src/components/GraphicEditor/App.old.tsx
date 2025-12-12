@@ -31,13 +31,15 @@ import {
   MoreHorizontal,
   ZoomIn,
   Bug,
+  Group,
+  Ungroup,
 } from 'lucide-react';
 
 const { useEffect, useRef, useState, useReducer, useCallback } = React;
 
 // --- 1. CONSTANTS & ASSETS ---
-const CANVAS_WIDTH = 1080; // Updated to 1080
-const CANVAS_HEIGHT = 1080; // Updated to 1080
+const CANVAS_WIDTH = 1080;
+const CANVAS_HEIGHT = 1080;
 const SELECTION_COLOR = '#8b5cf6';
 const GUIDE_COLOR = '#ec4899';
 const HANDLE_SIZE = 10;
@@ -106,6 +108,7 @@ interface DesignElement {
   opacity: number;
   flipX: boolean;
   flipY: boolean;
+  groupId?: string;
 }
 
 interface Page {
@@ -167,7 +170,9 @@ type Action =
     }
   | { type: 'CLOSE_CONTEXT_MENU' }
   | { type: 'COPY_ELEMENT' }
-  | { type: 'MOVE_ELEMENT_BY'; ids: string[]; dx: number; dy: number }; // New action for keyboard move
+  | { type: 'MOVE_ELEMENT_BY'; ids: string[]; dx: number; dy: number }
+  | { type: 'GROUP_ELEMENTS' }
+  | { type: 'UNGROUP_ELEMENTS' };
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -178,7 +183,7 @@ const initialState: AppState = {
   activePageId: '',
   selectedIds: [],
   isPlaying: false,
-  zoom: 0.6, // Default Zoom 0.6
+  zoom: 0.6,
   pan: { x: 0, y: 0 },
   activeTab: 'media',
   contextMenu: { visible: false, x: 0, y: 0, elementId: null },
@@ -199,10 +204,6 @@ const reducer = (state: AppState, action: Action): AppState => {
         pages: [...state.pages, newPage],
         activePageId: newPage.id,
       };
-
-    case 'SELECT_PAGE':
-      // Simplified as we removed timeline logic that switched pages
-      return state;
 
     case 'ADD_ELEMENT':
       return {
@@ -283,6 +284,43 @@ const reducer = (state: AppState, action: Action): AppState => {
         }),
       };
 
+    case 'GROUP_ELEMENTS': {
+      if (state.selectedIds.length < 2) return state;
+      const newGroupId = generateId();
+      return {
+        ...state,
+        pages: state.pages.map(p => {
+          if (p.id !== state.activePageId) return p;
+          return {
+            ...p,
+            elements: p.elements.map(el =>
+              state.selectedIds.includes(el.id)
+                ? { ...el, groupId: newGroupId }
+                : el
+            ),
+          };
+        }),
+      };
+    }
+
+    case 'UNGROUP_ELEMENTS': {
+      if (state.selectedIds.length === 0) return state;
+      return {
+        ...state,
+        pages: state.pages.map(p => {
+          if (p.id !== state.activePageId) return p;
+          return {
+            ...p,
+            elements: p.elements.map(el =>
+              state.selectedIds.includes(el.id)
+                ? { ...el, groupId: undefined }
+                : el
+            ),
+          };
+        }),
+      };
+    }
+
     case 'ALIGN_ELEMENTS': {
       const page = state.pages.find(p => p.id === state.activePageId);
       if (!page || state.selectedIds.length === 0) return state;
@@ -338,16 +376,28 @@ const reducer = (state: AppState, action: Action): AppState => {
 
     case 'SELECT_ELEMENT': {
       if (action.id === null) return { ...state, selectedIds: [] };
-      const isSelected = state.selectedIds.includes(action.id);
-      if (action.append) {
-        return {
-          ...state,
-          selectedIds: isSelected
-            ? state.selectedIds.filter(id => id !== action.id)
-            : [...state.selectedIds, action.id],
-        };
+
+      // Check for Group logic
+      const page = state.pages.find(p => p.id === state.activePageId);
+      const clickedEl = page?.elements.find(e => e.id === action.id);
+
+      // If element belongs to a group, select the whole group
+      let idsToSelect = [action.id];
+      if (clickedEl?.groupId) {
+        idsToSelect = page?.elements
+          .filter(e => e.groupId === clickedEl.groupId)
+          .map(e => e.id) || [action.id];
       }
-      return { ...state, selectedIds: [action.id] };
+
+      if (action.append) {
+        const newSelection = new Set(state.selectedIds);
+        idsToSelect.forEach(id => {
+          if (newSelection.has(id)) newSelection.delete(id);
+          else newSelection.add(id);
+        });
+        return { ...state, selectedIds: Array.from(newSelection) };
+      }
+      return { ...state, selectedIds: idsToSelect };
     }
 
     case 'SELECT_MULTIPLE':
@@ -378,9 +428,25 @@ const reducer = (state: AppState, action: Action): AppState => {
       const toCopy = state.pages[pIdx].elements.filter(e =>
         state.selectedIds.includes(e.id)
       );
+
+      // Map old groupIds to new ones to preserve grouping structure in copy
+      const groupMap = new Map<string, string>();
+
       toCopy.forEach(el => {
-        newEls.push({ ...el, id: generateId(), x: el.x + 20, y: el.y + 20 });
+        let newGroupId = el.groupId;
+        if (el.groupId) {
+          if (!groupMap.has(el.groupId)) groupMap.set(el.groupId, generateId());
+          newGroupId = groupMap.get(el.groupId);
+        }
+        newEls.push({
+          ...el,
+          id: generateId(),
+          x: el.x + 20,
+          y: el.y + 20,
+          groupId: newGroupId,
+        });
       });
+
       return {
         ...state,
         pages: state.pages.map((p, i) =>
@@ -428,8 +494,8 @@ const useCanvasEngine = (
   canvasRef: React.RefObject<HTMLCanvasElement>,
   page: Page | undefined,
   selectedIds: string[],
-  isPlaying: boolean,
-  currentTime: number,
+  isPlaying: boolean, // Added back missing prop
+  currentTime: number, // Added back missing prop
   zoom: number,
   pan: { x: number; y: number },
   dispatch: React.Dispatch<Action>
@@ -474,8 +540,12 @@ const useCanvasEngine = (
   });
   const transientState = useRef<Map<string, Partial<DesignElement>>>(new Map());
 
+  // OPTIMIZATION: Offscreen Canvas for Static Elements
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isCachingRef = useRef(false);
+
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
-  const getImg = (src: string) => {
+  const getImg = useCallback((src: string) => {
     if (imageCache.current.has(src)) return imageCache.current.get(src)!;
     const img = new Image();
     img.src = src;
@@ -484,7 +554,7 @@ const useCanvasEngine = (
       imageCache.current.set(src, img);
     };
     return img;
-  };
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current || !canvasRef.current.parentElement) return;
@@ -528,6 +598,144 @@ const useCanvasEngine = (
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [zoom, pan, dispatch]);
 
+  // RENDER HELPER
+  const drawElement = useCallback(
+    (ctx: CanvasRenderingContext2D, el: DesignElement) => {
+      ctx.save();
+      const cx = el.x + el.width / 2;
+      const cy = el.y + el.height / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((el.rotation * Math.PI) / 180);
+      if (el.flipX) ctx.scale(-1, 1);
+      if (el.flipY) ctx.scale(1, -1);
+      ctx.translate(-el.width / 2, -el.height / 2);
+      ctx.globalAlpha = el.opacity;
+
+      if (el.type === 'image' && el.src) {
+        ctx.beginPath();
+        ctx.rect(0, 0, el.width, el.height);
+        ctx.clip();
+        const img = getImg(el.src);
+        if (img.complete) {
+          const cw = el.contentWidth || el.width;
+          const ch = el.contentHeight || el.height;
+          ctx.drawImage(img, 0, 0, cw, ch);
+        } else {
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillRect(0, 0, el.width, el.height);
+        }
+      } else {
+        ctx.beginPath();
+        if (el.type === 'rect') ctx.rect(0, 0, el.width, el.height);
+        else if (el.type === 'circle')
+          ctx.ellipse(
+            el.width / 2,
+            el.height / 2,
+            el.width / 2,
+            el.height / 2,
+            0,
+            0,
+            Math.PI * 2
+          );
+        else if (el.type === 'triangle') {
+          ctx.moveTo(el.width / 2, 0);
+          ctx.lineTo(el.width, el.height);
+          ctx.lineTo(0, el.height);
+          ctx.closePath();
+        } else if (el.type === 'star') {
+          const r = Math.min(el.width, el.height) / 2;
+          const cx = el.width / 2;
+          const cy = el.height / 2;
+          for (let i = 0; i < 5; i++) {
+            ctx.lineTo(
+              cx + r * Math.cos(((18 + i * 72) / 180) * Math.PI),
+              cy - r * Math.sin(((18 + i * 72) / 180) * Math.PI)
+            );
+            ctx.lineTo(
+              cx + (r / 2.5) * Math.cos(((54 + i * 72) / 180) * Math.PI),
+              cy - (r / 2.5) * Math.sin(((54 + i * 72) / 180) * Math.PI)
+            );
+          }
+          ctx.closePath();
+        } else if (el.type === 'heart') {
+          const topCurveHeight = el.height * 0.3;
+          ctx.moveTo(el.width / 2, el.height * 0.2);
+          ctx.bezierCurveTo(el.width / 2, 0, 0, 0, 0, topCurveHeight);
+          ctx.bezierCurveTo(
+            0,
+            (el.height + topCurveHeight) / 2,
+            el.width / 2,
+            (el.height + topCurveHeight) / 2,
+            el.width / 2,
+            el.height
+          );
+          ctx.bezierCurveTo(
+            el.width / 2,
+            (el.height + topCurveHeight) / 2,
+            el.width,
+            (el.height + topCurveHeight) / 2,
+            el.width,
+            topCurveHeight
+          );
+          ctx.bezierCurveTo(
+            el.width,
+            0,
+            el.width / 2,
+            0,
+            el.width / 2,
+            el.height * 0.2
+          );
+        } else if (el.type === 'hexagon') {
+          const cx = el.width / 2;
+          const cy = el.height / 2;
+          const r = Math.min(el.width, el.height) / 2;
+          for (let i = 0; i < 6; i++) {
+            ctx.lineTo(
+              cx + r * Math.cos((i * 2 * Math.PI) / 6),
+              cy + r * Math.sin((i * 2 * Math.PI) / 6)
+            );
+          }
+          ctx.closePath();
+        } else if (el.type === 'diamond') {
+          ctx.moveTo(el.width / 2, 0);
+          ctx.lineTo(el.width, el.height / 2);
+          ctx.lineTo(el.width / 2, el.height);
+          ctx.lineTo(0, el.height / 2);
+          ctx.closePath();
+        }
+
+        if (el.fillImage) {
+          ctx.save();
+          ctx.clip();
+          const img = getImg(el.fillImage);
+          if (img.complete) ctx.drawImage(img, 0, 0, el.width, el.height);
+          else {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(0, 0, el.width, el.height);
+          }
+          ctx.restore();
+        } else {
+          ctx.fillStyle = el.fill;
+          ctx.fill();
+        }
+      }
+
+      if (el.strokeWidth > 0 && el.stroke !== 'transparent') {
+        if (el.type !== 'image') {
+          ctx.strokeStyle = el.stroke;
+          ctx.lineWidth = el.strokeWidth;
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = el.stroke;
+          ctx.lineWidth = el.strokeWidth;
+          ctx.strokeRect(0, 0, el.width, el.height);
+        }
+      }
+      ctx.restore();
+    },
+    [getImg]
+  );
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !page) return;
@@ -538,6 +746,8 @@ const useCanvasEngine = (
 
     const render = () => {
       const dpr = window.devicePixelRatio || 1;
+
+      // Setup Main Canvas
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#e5e7eb';
@@ -551,7 +761,7 @@ const useCanvasEngine = (
       ctx.scale(zoom, zoom);
       ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
 
-      // --- Draw Canvas Background ---
+      // Draw Canvas Background
       ctx.shadowColor = 'rgba(0,0,0,0.15)';
       ctx.shadowBlur = 30;
       ctx.shadowOffsetY = 10;
@@ -569,11 +779,57 @@ const useCanvasEngine = (
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
 
+      // --- OPTIMIZED RENDERING ---
+      const isDragging =
+        dragInfo.current.active &&
+        (dragInfo.current.type === 'move' ||
+          dragInfo.current.type === 'rotate' ||
+          dragInfo.current.type === 'resize');
+
+      // 1. Prepare Static Cache if starting drag
+      if (isDragging && !isCachingRef.current) {
+        if (!offscreenCanvasRef.current)
+          offscreenCanvasRef.current = document.createElement('canvas');
+        const oc = offscreenCanvasRef.current;
+        oc.width = CANVAS_WIDTH;
+        oc.height = CANVAS_HEIGHT;
+        const oCtx = oc.getContext('2d');
+        if (oCtx) {
+          oCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          // Draw only NON-selected elements to static cache
+          page.elements.forEach(el => {
+            if (!selectedIds.includes(el.id)) {
+              drawElement(oCtx, el);
+            }
+          });
+        }
+        isCachingRef.current = true;
+      } else if (!isDragging) {
+        isCachingRef.current = false;
+      }
+
+      // 2. Draw Elements
+      if (isDragging && offscreenCanvasRef.current && isCachingRef.current) {
+        // A. Draw Static Background (1 Draw Call)
+        ctx.drawImage(offscreenCanvasRef.current, 0, 0);
+
+        // B. Draw Dynamic (Selected) Elements
+        page.elements.forEach(baseEl => {
+          if (selectedIds.includes(baseEl.id)) {
+            const transient = transientState.current.get(baseEl.id);
+            const el = transient ? { ...baseEl, ...transient } : baseEl;
+            drawElement(ctx, el);
+          }
+        });
+      } else {
+        // Standard Draw (No Cache)
+        page.elements.forEach(el => drawElement(ctx, el));
+      }
+
       // --- Draw Snapping Guides ---
       if (dragInfo.current.active && dragInfo.current.type === 'move') {
         ctx.lineWidth = 1 / zoom;
         ctx.strokeStyle = GUIDE_COLOR;
-
         activeSnapGuides.current.x.forEach(gx => {
           ctx.beginPath();
           ctx.moveTo(gx, -1000);
@@ -588,147 +844,8 @@ const useCanvasEngine = (
         });
       }
 
-      // --- Draw Elements ---
-      page.elements.forEach(baseEl => {
-        const transient = transientState.current.get(baseEl.id);
-        const el = transient ? { ...baseEl, ...transient } : baseEl;
-
-        ctx.save();
-        const cx = el.x + el.width / 2;
-        const cy = el.y + el.height / 2;
-        ctx.translate(cx, cy);
-        ctx.rotate((el.rotation * Math.PI) / 180);
-        if (el.flipX) ctx.scale(-1, 1);
-        if (el.flipY) ctx.scale(1, -1);
-        ctx.translate(-el.width / 2, -el.height / 2);
-        ctx.globalAlpha = el.opacity;
-
-        // Draw Element Content (Image or Shape)
-        if (el.type === 'image' && el.src) {
-          ctx.beginPath();
-          ctx.rect(0, 0, el.width, el.height);
-          ctx.clip();
-          const img = getImg(el.src);
-          if (img.complete) {
-            const cw = el.contentWidth || el.width;
-            const ch = el.contentHeight || el.height;
-            ctx.drawImage(img, 0, 0, cw, ch);
-          } else {
-            ctx.fillStyle = '#e2e8f0';
-            ctx.fillRect(0, 0, el.width, el.height);
-          }
-        } else {
-          ctx.beginPath();
-          if (el.type === 'rect') ctx.rect(0, 0, el.width, el.height);
-          else if (el.type === 'circle')
-            ctx.ellipse(
-              el.width / 2,
-              el.height / 2,
-              el.width / 2,
-              el.height / 2,
-              0,
-              0,
-              Math.PI * 2
-            );
-          else if (el.type === 'triangle') {
-            ctx.moveTo(el.width / 2, 0);
-            ctx.lineTo(el.width, el.height);
-            ctx.lineTo(0, el.height);
-            ctx.closePath();
-          } else if (el.type === 'star') {
-            const r = Math.min(el.width, el.height) / 2;
-            const cx = el.width / 2;
-            const cy = el.height / 2;
-            for (let i = 0; i < 5; i++) {
-              ctx.lineTo(
-                cx + r * Math.cos(((18 + i * 72) / 180) * Math.PI),
-                cy - r * Math.sin(((18 + i * 72) / 180) * Math.PI)
-              );
-              ctx.lineTo(
-                cx + (r / 2.5) * Math.cos(((54 + i * 72) / 180) * Math.PI),
-                cy - (r / 2.5) * Math.sin(((54 + i * 72) / 180) * Math.PI)
-              );
-            }
-            ctx.closePath();
-          } else if (el.type === 'heart') {
-            const topCurveHeight = el.height * 0.3;
-            ctx.moveTo(el.width / 2, el.height * 0.2);
-            ctx.bezierCurveTo(el.width / 2, 0, 0, 0, 0, topCurveHeight);
-            ctx.bezierCurveTo(
-              0,
-              (el.height + topCurveHeight) / 2,
-              el.width / 2,
-              (el.height + topCurveHeight) / 2,
-              el.width / 2,
-              el.height
-            );
-            ctx.bezierCurveTo(
-              el.width / 2,
-              (el.height + topCurveHeight) / 2,
-              el.width,
-              (el.height + topCurveHeight) / 2,
-              el.width,
-              topCurveHeight
-            );
-            ctx.bezierCurveTo(
-              el.width,
-              0,
-              el.width / 2,
-              0,
-              el.width / 2,
-              el.height * 0.2
-            );
-          } else if (el.type === 'hexagon') {
-            const cx = el.width / 2;
-            const cy = el.height / 2;
-            const r = Math.min(el.width, el.height) / 2;
-            for (let i = 0; i < 6; i++) {
-              ctx.lineTo(
-                cx + r * Math.cos((i * 2 * Math.PI) / 6),
-                cy + r * Math.sin((i * 2 * Math.PI) / 6)
-              );
-            }
-            ctx.closePath();
-          } else if (el.type === 'diamond') {
-            ctx.moveTo(el.width / 2, 0);
-            ctx.lineTo(el.width, el.height / 2);
-            ctx.lineTo(el.width / 2, el.height);
-            ctx.lineTo(0, el.height / 2);
-            ctx.closePath();
-          }
-
-          if (el.fillImage) {
-            ctx.save();
-            ctx.clip();
-            const img = getImg(el.fillImage);
-            if (img.complete) ctx.drawImage(img, 0, 0, el.width, el.height);
-            else {
-              ctx.fillStyle = '#e2e8f0';
-              ctx.fillRect(0, 0, el.width, el.height);
-            }
-            ctx.restore();
-          } else {
-            ctx.fillStyle = el.fill;
-            ctx.fill();
-          }
-        }
-
-        if (el.strokeWidth > 0 && el.stroke !== 'transparent') {
-          if (el.type !== 'image') {
-            ctx.strokeStyle = el.stroke;
-            ctx.lineWidth = el.strokeWidth;
-            ctx.stroke();
-          } else {
-            ctx.strokeStyle = el.stroke;
-            ctx.lineWidth = el.strokeWidth;
-            ctx.strokeRect(0, 0, el.width, el.height);
-          }
-        }
-        ctx.restore();
-      });
-
       // --- Draw Selection ---
-      if (selectedIds.length > 0 && !isPlaying) {
+      if (selectedIds.length > 0) {
         const selectedEls = page.elements
           .filter(e => selectedIds.includes(e.id))
           .map(e => {
@@ -823,10 +940,9 @@ const useCanvasEngine = (
             const textWidth = ctx.measureText(degText).width;
             const pad = 6;
 
-            // Position tag above the rotate handle
             ctx.save();
             ctx.translate(minX + bw / 2, minY - rotOffset - 25);
-            ctx.rotate((-el.rotation * Math.PI) / 180); // Keep text upright
+            ctx.rotate((-el.rotation * Math.PI) / 180);
 
             ctx.fillStyle = SELECTION_COLOR;
             ctx.beginPath();
@@ -883,7 +999,7 @@ const useCanvasEngine = (
 
     render();
     return () => cancelAnimationFrame(animationFrame);
-  }, [page, selectedIds, isPlaying, currentTime, zoom, pan]);
+  }, [page, selectedIds, isPlaying, currentTime, zoom, pan, drawElement]);
 
   // Input Handling
   useEffect(() => {
@@ -976,7 +1092,6 @@ const useCanvasEngine = (
         return;
       }
 
-      // Check for Handles
       if (selectedIds.length > 0 && page) {
         const selectedEls = page.elements.filter(e =>
           selectedIds.includes(e.id)
@@ -1044,7 +1159,6 @@ const useCanvasEngine = (
         }
       }
 
-      // Check Element Hit
       let hitEl = null;
       if (page) {
         for (let i = page.elements.length - 1; i >= 0; i--) {
@@ -1393,6 +1507,7 @@ const useCanvasEngine = (
 
       dragInfo.current.active = false;
       activeSnapGuides.current = { x: [], y: [] };
+      isCachingRef.current = false; // Reset Cache on Drop
     };
 
     canvas.addEventListener('mousedown', handleMouseDown);
@@ -1403,7 +1518,7 @@ const useCanvasEngine = (
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [page, selectedIds, zoom, pan]);
+  }, [page, selectedIds, zoom, pan, drawElement]);
 };
 
 // --- 5. UI COMPONENTS ---
@@ -1538,6 +1653,16 @@ const ContextToolbar = ({
         />
       </div>
       <div className="w-px h-6 bg-gray-200" />
+      <IconButton
+        icon={Group}
+        onClick={() => dispatch({ type: 'GROUP_ELEMENTS' })}
+        title="Group (Cmd+G)"
+      />
+      <IconButton
+        icon={Ungroup}
+        onClick={() => dispatch({ type: 'UNGROUP_ELEMENTS' })}
+        title="Ungroup (Cmd+Shift+G)"
+      />
       <IconButton
         icon={Copy}
         onClick={() => dispatch({ type: 'COPY_ELEMENT' })}
@@ -1707,7 +1832,13 @@ const App = () => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
-        e.preventDefault();
+        if (e.shiftKey) {
+          e.preventDefault();
+          dispatch({ type: 'UNGROUP_ELEMENTS' });
+        } else {
+          e.preventDefault();
+          dispatch({ type: 'GROUP_ELEMENTS' });
+        }
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
         e.preventDefault();
