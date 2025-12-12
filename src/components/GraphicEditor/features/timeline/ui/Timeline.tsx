@@ -64,6 +64,10 @@ const Timeline = ({
   const totalWidth = Math.max((finalDuration + 5) * zoom, 1000);
 
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTimeDisplay, setScrubTimeDisplay] = useState<{
+    time: number;
+    x: number;
+  } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef<{ x: number; left: number } | null>(null);
   const [draggingClip, setDraggingClip] = useState<{
@@ -181,9 +185,18 @@ const Timeline = ({
       const rect = scrollContainerRef.current.getBoundingClientRect();
       const offsetX =
         e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
-      onScrub(Math.max(0, offsetX / zoom));
+      const time = Math.max(0, offsetX / zoom);
+      onScrub(time);
+
+      // Update time display tooltip
+      if (isScrubbing) {
+        setScrubTimeDisplay({
+          time,
+          x: e.clientX - rect.left,
+        });
+      }
     },
-    [zoom, onScrub]
+    [zoom, onScrub, isScrubbing]
   );
 
   const handleTrackMouseDown = (e: React.MouseEvent) => {
@@ -386,6 +399,7 @@ const Timeline = ({
     };
     const handleGlobalMouseUp = () => {
       setIsScrubbing(false);
+      setScrubTimeDisplay(null);
       setIsPanning(false);
       setDraggingClip(null);
       setTrimmingClip(null);
@@ -641,6 +655,19 @@ const Timeline = ({
           />
         </div>
       </div>
+
+      {/* Time Display Tooltip */}
+      {scrubTimeDisplay && (
+        <div
+          className="fixed bg-black/90 text-white px-3 py-1.5 rounded text-sm font-mono shadow-lg pointer-events-none z-50"
+          style={{
+            left: scrubTimeDisplay.x + 10,
+            top: 10,
+          }}
+        >
+          {scrubTimeDisplay.time.toFixed(2)}s
+        </div>
+      )}
     </div>
   );
 };

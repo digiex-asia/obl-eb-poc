@@ -1,5 +1,6 @@
 import { Layers, Undo2, Redo2, Film, Save, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const Header = ({
   past,
@@ -11,14 +12,23 @@ const Header = ({
   onRedo,
   onExportVideo,
   onExportJSON,
+  onZoomChange,
   saveIndicator,
   createTemplateBtn,
   openTemplateBtn,
 }: any & {
+  onZoomChange?: (zoom: number) => void;
   saveIndicator?: ReactNode;
   createTemplateBtn?: ReactNode;
   openTemplateBtn?: ReactNode;
 }) => {
+  const [zoomInput, setZoomInput] = useState(Math.round(zoom * 100).toString());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync zoomInput with external zoom changes
+  useEffect(() => {
+    setZoomInput(Math.round(zoom * 100).toString());
+  }, [zoom]);
   return (
     <div className="h-10 bg-violet-600 text-white flex items-center justify-between px-5 shadow-sm z-40 flex-shrink-0">
       <div className="flex items-center gap-4">
@@ -52,8 +62,53 @@ const Header = ({
             Untitled Design
           </div>
         )}
-        <div className="text-xs bg-white/10 px-3 py-1 rounded-full font-mono">
-          {Math.round(zoom * 100)}%
+        <div className="text-xs bg-white/10 px-2 py-1 rounded-full font-mono flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={zoomInput}
+            onChange={e => {
+              // Allow only digits
+              const value = e.target.value.replace(/\D/g, '');
+              setZoomInput(value);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const value = parseInt(zoomInput, 10);
+                if (!isNaN(value)) {
+                  // Clamp between 10% and 500%
+                  const clampedZoom = Math.max(10, Math.min(500, value)) / 100;
+                  onZoomChange?.(clampedZoom);
+                  setZoomInput(Math.round(clampedZoom * 100).toString());
+                }
+                inputRef.current?.blur();
+              } else if (e.key === 'Escape') {
+                // Restore original value
+                setZoomInput(Math.round(zoom * 100).toString());
+                inputRef.current?.blur();
+              }
+            }}
+            onBlur={() => {
+              // Validate and restore if invalid
+              const value = parseInt(zoomInput, 10);
+              if (isNaN(value) || value < 10 || value > 500) {
+                setZoomInput(Math.round(zoom * 100).toString());
+              } else {
+                // Apply the valid value
+                const clampedZoom = Math.max(10, Math.min(500, value)) / 100;
+                onZoomChange?.(clampedZoom);
+                setZoomInput(Math.round(clampedZoom * 100).toString());
+              }
+            }}
+            onFocus={e => {
+              // Select all text for easy replacement
+              e.target.select();
+            }}
+            className="bg-transparent text-white text-center outline-none w-10 cursor-text"
+            title="Click to edit zoom (10-500%)"
+          />
+          <span className="ml-0.5">%</span>
         </div>
         {/* Template Management Buttons */}
         {openTemplateBtn}

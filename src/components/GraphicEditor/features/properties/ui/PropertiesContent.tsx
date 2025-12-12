@@ -109,9 +109,7 @@ const PropertiesContent = ({
               onMouseLeave={() => onPreviewAnim(null)}
               onClick={() => {
                 onCheckpoint();
-                onChange(element.id, {
-                  animation: { ...element.animation, type: anim.id },
-                });
+                onChange(element.id, {}, { type: anim.id });
               }}
               className={`p-2 rounded border text-xs text-center transition-all ${element.animation?.type === anim.id ? 'bg-violet-50 border-violet-500 text-violet-700' : 'bg-white border-gray-200 hover:border-violet-300'}`}
             >
@@ -133,12 +131,7 @@ const PropertiesContent = ({
               value={element.animation?.speed || 1}
               onMouseDown={onCheckpoint}
               onChange={e =>
-                onChange(element.id, {
-                  animation: {
-                    ...element.animation,
-                    speed: parseFloat(e.target.value),
-                  },
-                })
+                onChange(element.id, {}, { speed: parseFloat(e.target.value) })
               }
               className="w-full accent-violet-600"
             />

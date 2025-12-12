@@ -1,6 +1,11 @@
 import { Copy, Trash2 } from 'lucide-react';
 
-const ContextMenu = ({ contextMenu, onDuplicate, onDelete, onDeleteAudio }: any) => {
+const ContextMenu = ({
+  contextMenu,
+  onDuplicate,
+  onDelete,
+  onDeleteAudio,
+}: any) => {
   if (!contextMenu.visible) return null;
 
   return (

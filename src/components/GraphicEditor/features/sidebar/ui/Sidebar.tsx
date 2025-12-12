@@ -119,21 +119,34 @@ const Sidebar = ({
         />
       </div>
 
-      <div className="w-80 bg-[#f9fafb] flex flex-col border-r border-gray-200 shadow-inner">
-        {selectedElement ? (
-          <PropertiesPanel element={selectedElement} onCheckpoint={() => {}} />
-        ) : activeTab === 'animation' ? (
-          <div className="flex flex-col h-full bg-white animate-in slide-in-from-left duration-200">
-            <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 font-bold text-xs uppercase tracking-wider text-gray-600 bg-gray-50">
-              <span>Page Animation</span>
+      {/* Sidebar content panel - only show if not on 'blocks' tab */}
+      {activeTab !== 'blocks' && (
+        <div className="w-80 bg-[#f9fafb] flex flex-col border-r border-gray-200 shadow-inner">
+          {activeTab === 'animation' && selectedElement ? (
+            <div className="flex flex-col h-full bg-white animate-in slide-in-from-left duration-200">
+              <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 font-bold text-xs uppercase tracking-wider text-gray-600 bg-gray-50">
+                <span>Element Animation</span>
+              </div>
+              {/* Element Animation Portal */}
+              <div
+                id="page-anim-portal-target"
+                className="flex-1 overflow-y-auto"
+              />
             </div>
-            {/* Page Animation Props Logic would go here, reusing the Portal pattern later */}
-            <div
-              id="page-anim-portal-target"
-              className="flex-1 overflow-y-auto"
-            />
-          </div>
-        ) : (
+          ) : activeTab === 'animation' && !selectedElement ? (
+            <div className="flex flex-col h-full bg-white animate-in slide-in-from-left duration-200">
+              <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 font-bold text-xs uppercase tracking-wider text-gray-600 bg-gray-50">
+                <span>Page Animation</span>
+              </div>
+              {/* Page Animation Portal */}
+              <div
+                id="page-anim-portal-target"
+                className="flex-1 overflow-y-auto"
+              />
+            </div>
+          ) : selectedElement && activeTab !== 'animation' ? (
+            <PropertiesPanel element={selectedElement} onCheckpoint={() => {}} />
+          ) : (
           <>
             <div className="h-14 flex items-center px-4 border-b border-gray-200 bg-white font-bold text-gray-800 capitalize">
               {activeTab === 'media' ? 'Images' : activeTab}
@@ -304,8 +317,9 @@ const Sidebar = ({
               )}
             </div>
           </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
