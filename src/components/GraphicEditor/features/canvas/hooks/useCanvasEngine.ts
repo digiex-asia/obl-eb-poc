@@ -14,6 +14,7 @@ const useCanvasEngine = (
   containerRef: React.RefObject<HTMLDivElement>, // New: Container for wheel events
   page: Page | undefined,
   selectedId: string | null,
+  selectedIds: string[], // Multi-selection support
   isPlaying: boolean,
   currentTime: number,
   zoom: number,
@@ -25,7 +26,7 @@ const useCanvasEngine = (
 ) => {
   const dragInfo = useRef<{
     active: boolean;
-    type: 'move' | 'resize' | 'rotate' | 'pan';
+    type: 'move' | 'resize' | 'rotate' | 'pan' | 'select';
     handle?: string;
     id: string | null;
     startX: number;
@@ -49,6 +50,17 @@ const useCanvasEngine = (
     initialH: 0,
     initialRot: 0,
   });
+
+  // Selection box state
+  const selectionBox = useRef<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
+
+  // Store initial positions of all selected elements for multi-element dragging
+  const initialElementPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
   const getImg = (src: string) => {
@@ -107,7 +119,7 @@ const useCanvasEngine = (
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !page) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: false, alpha: true });
     if (!ctx) return;
 
     let animationFrame: number;
@@ -343,7 +355,7 @@ const useCanvasEngine = (
         }
 
         // Selection Highlights
-        if (el.id === selectedId && !isPlaying && !isPreview) {
+        if (selectedIds.includes(el.id) && !isPlaying && !isPreview) {
           ctx.strokeStyle = SELECTION_COLOR;
           ctx.lineWidth = 1.5 / zoom;
           ctx.strokeRect(0, 0, el.width, el.height);
@@ -387,13 +399,30 @@ const useCanvasEngine = (
         ctx.restore();
       });
 
+      // Draw selection box if dragging to select
+      if (selectionBox.current && !isPlaying) {
+        const { startX, startY, endX, endY } = selectionBox.current;
+        const x = Math.min(startX, endX);
+        const y = Math.min(startY, endY);
+        const w = Math.abs(endX - startX);
+        const h = Math.abs(endY - startY);
+
+        ctx.strokeStyle = SELECTION_COLOR;
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.1)'; // Light blue fill
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([5 / zoom, 5 / zoom]);
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+      }
+
       ctx.restore();
       animationFrame = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animationFrame);
-  }, [page, selectedId, isPlaying, currentTime, zoom, pan, previewAnimation]);
+  }, [page, selectedId, selectedIds, isPlaying, currentTime, zoom, pan, previewAnimation]);
 
   // Input Handling
   useEffect(() => {
@@ -534,7 +563,32 @@ const useCanvasEngine = (
         // --- HISTORY CAPTURE: START OF INTERACTION ---
         dispatch({ type: 'CAPTURE_CHECKPOINT' });
 
-        dispatch({ type: 'SELECT_ELEMENT', id: el.id });
+        // Cmd/Ctrl+Click for multi-selection
+        if (e.metaKey || e.ctrlKey) {
+          if (selectedIds.includes(el.id)) {
+            // Deselect if already selected
+            const newIds = selectedIds.filter(id => id !== el.id);
+            dispatch({ type: 'SELECT_MULTIPLE', ids: newIds });
+          } else {
+            // Add to selection
+            dispatch({ type: 'SELECT_MULTIPLE', ids: [...selectedIds, el.id] });
+          }
+          return;
+        } else {
+          // Single selection
+          dispatch({ type: 'SELECT_ELEMENT', id: el.id });
+        }
+
+        // Store initial positions of all selected elements for multi-drag
+        initialElementPositions.current.clear();
+        const elementsToMove = selectedIds.includes(el.id) ? selectedIds : [el.id];
+        elementsToMove.forEach(id => {
+          const elem = page.elements.find(e => e.id === id);
+          if (elem) {
+            initialElementPositions.current.set(id, { x: elem.x, y: elem.y });
+          }
+        });
+
         dragInfo.current = {
           active: true,
           type: 'move',
@@ -548,7 +602,25 @@ const useCanvasEngine = (
           initialRot: el.rotation,
         };
       } else {
-        dispatch({ type: 'SELECT_ELEMENT', id: null });
+        // Clicking on empty space - start selection box drag
+        selectionBox.current = {
+          startX: mouse.x,
+          startY: mouse.y,
+          endX: mouse.x,
+          endY: mouse.y,
+        };
+        dragInfo.current = {
+          active: true,
+          type: 'select',
+          id: null,
+          startX: mouse.x,
+          startY: mouse.y,
+          initialX: 0,
+          initialY: 0,
+          initialW: 0,
+          initialH: 0,
+          initialRot: 0,
+        };
       }
     };
 
@@ -569,6 +641,13 @@ const useCanvasEngine = (
       }
 
       const mouse = toCanvasSpace(e);
+
+      // Update selection box
+      if (dragInfo.current.type === 'select' && selectionBox.current) {
+        selectionBox.current.endX = mouse.x;
+        selectionBox.current.endY = mouse.y;
+        return;
+      }
       const {
         id,
         initialX,
@@ -586,11 +665,25 @@ const useCanvasEngine = (
       if (dragInfo.current.type === 'move') {
         const dx = mouse.x - startX;
         const dy = mouse.y - startY;
-        dispatch({
-          type: 'UPDATE_ELEMENT',
-          id: id!,
-          attrs: { x: initialX + dx, y: initialY + dy },
-        });
+
+        // Move all selected elements together if multiple are selected
+        if (initialElementPositions.current.size > 1) {
+          const updates = Array.from(initialElementPositions.current.entries()).map(([elId, initialPos]) => ({
+            id: elId,
+            attrs: { x: initialPos.x + dx, y: initialPos.y + dy },
+          }));
+
+          dispatch({
+            type: 'BATCH_UPDATE_ELEMENTS',
+            updates,
+          });
+        } else {
+          dispatch({
+            type: 'UPDATE_ELEMENT',
+            id: id!,
+            attrs: { x: initialX + dx, y: initialY + dy },
+          });
+        }
       } else if (dragInfo.current.type === 'rotate') {
         const angle =
           (Math.atan2(mouse.y - centerY!, mouse.x - centerX!) * 180) / Math.PI;
@@ -681,6 +774,42 @@ const useCanvasEngine = (
     };
 
     const handleMouseUp = () => {
+      // Handle selection box completion
+      if (dragInfo.current.type === 'select' && selectionBox.current && page) {
+        const { startX, startY, endX, endY } = selectionBox.current;
+        const boxX = Math.min(startX, endX);
+        const boxY = Math.min(startY, endY);
+        const boxW = Math.abs(endX - startX);
+        const boxH = Math.abs(endY - startY);
+
+        // Only select if there was actual dragging (not just a click)
+        if (boxW > 5 || boxH > 5) {
+          // Find all elements that intersect with the selection box
+          const selectedElements = page.elements.filter(el => {
+            // Simple bounding box intersection test
+            const elRight = el.x + el.width;
+            const elBottom = el.y + el.height;
+            const boxRight = boxX + boxW;
+            const boxBottom = boxY + boxH;
+
+            return !(
+              el.x > boxRight ||
+              elRight < boxX ||
+              el.y > boxBottom ||
+              elBottom < boxY
+            );
+          });
+
+          const selectedIds = selectedElements.map(el => el.id);
+          dispatch({ type: 'SELECT_MULTIPLE', ids: selectedIds });
+        } else {
+          // Just a click, deselect all
+          dispatch({ type: 'SELECT_ELEMENT', id: null });
+        }
+
+        selectionBox.current = null;
+      }
+
       dragInfo.current.active = false;
     };
 
@@ -699,7 +828,7 @@ const useCanvasEngine = (
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [page, selectedId, zoom, pan, isSpacePressed]);
+  }, [page, selectedId, selectedIds, zoom, pan, isSpacePressed]);
 };
 
 export default useCanvasEngine;
