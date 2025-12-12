@@ -1,104 +1,104 @@
 # Implementation Tasks
 
-## Phase 1: Performance & Core UX (Critical)
+## Phase 1: Performance & Core UX (Critical) ✅
 
-### 1.1 Add BATCH_UPDATE_ELEMENTS Action
-- [ ] 1.1.1 Add `BATCH_UPDATE_ELEMENTS` action type to `shared/model/types.ts`
-- [ ] 1.1.2 Add action interface: `{ type: 'BATCH_UPDATE_ELEMENTS'; updates: { id: string; attrs: Partial<DesignElement> }[] }`
-- [ ] 1.1.3 Implement reducer case in `shared/model/store.ts`
-- [ ] 1.1.4 Create Map for efficient lookups: `updateMap = new Map(updates.map(u => [u.id, u.attrs]))`
-- [ ] 1.1.5 Test with 10+ elements, verify all updates applied correctly
+### 1.1 Add BATCH_UPDATE_ELEMENTS Action ✅
+- [x] 1.1.1 Add `BATCH_UPDATE_ELEMENTS` action type to `shared/model/types.ts`
+- [x] 1.1.2 Add action interface: `{ type: 'BATCH_UPDATE_ELEMENTS'; updates: { id: string; attrs: Partial<DesignElement> }[] }`
+- [x] 1.1.3 Implement reducer case in `shared/model/store.ts`
+- [x] 1.1.4 Create Map for efficient lookups: `updateMap = new Map(updates.map(u => [u.id, u.attrs]))`
+- [x] 1.1.5 Test with 10+ elements, verify all updates applied correctly
 
-### 1.2 Implement Transient State System
-- [ ] 1.2.1 Create `features/canvas/hooks/useTransientState.ts` hook
-- [ ] 1.2.2 Add `transientState` ref: `useRef<Map<string, Partial<DesignElement>>>(new Map())`
-- [ ] 1.2.3 Update mousemove handlers to write to transient state instead of dispatching
-- [ ] 1.2.4 Modify render loop in `useCanvasEngine` to merge transient data: `const el = transient ? { ...baseEl, ...transient } : baseEl`
-- [ ] 1.2.5 Commit transient state on mouseup using BATCH_UPDATE_ELEMENTS
-- [ ] 1.2.6 Clear transient state on selection change, page switch, playback start
-- [ ] 1.2.7 Performance test: Drag 50 elements, verify 60fps on mid-range device
+### 1.2 Implement Transient State System ✅
+- [x] 1.2.1 Create `features/canvas/hooks/useTransientState.ts` hook
+- [x] 1.2.2 Add `transientState` ref: `useRef<Map<string, Partial<DesignElement>>>(new Map())`
+- [x] 1.2.3 Update mousemove handlers to write to transient state instead of dispatching
+- [x] 1.2.4 Modify render loop in `useCanvasEngine` to merge transient data: `const el = transient ? { ...baseEl, ...transient } : baseEl`
+- [x] 1.2.5 Commit transient state on mouseup using BATCH_UPDATE_ELEMENTS
+- [x] 1.2.6 Clear transient state on selection change, page switch, playback start
+- [x] 1.2.7 Performance test: Drag 50 elements, verify 60fps on mid-range device
 
-### 1.3 Image Aspect Ratio Preservation
-- [ ] 1.3.1 Create `addImageWithRatio` helper in `features/sidebar/lib/imageHelpers.ts`
-- [ ] 1.3.2 Load image, read naturalWidth/Height
-- [ ] 1.3.3 Scale down if width > 400px, maintain aspect ratio
-- [ ] 1.3.4 Center image on drop point (subtract half dimensions)
-- [ ] 1.3.5 Update `Sidebar.tsx` image onClick and onDragStart to use helper
-- [ ] 1.3.6 Update `Canvas.tsx` onDrop handler to use helper
-- [ ] 1.3.7 Test: Add landscape image (600x400), verify scaled to 400x267
-- [ ] 1.3.8 Test: Add portrait image (400x600), verify scaled to 267x400
-- [ ] 1.3.9 Test: Drop image at specific position, verify centered correctly
+### 1.3 Image Aspect Ratio Preservation ✅
+- [x] 1.3.1 Create `addImageWithRatio` helper in `features/sidebar/lib/imageHelpers.ts`
+- [x] 1.3.2 Load image, read naturalWidth/Height
+- [x] 1.3.3 Scale down if width > 400px, maintain aspect ratio
+- [x] 1.3.4 Center image on drop point (subtract half dimensions)
+- [x] 1.3.5 Update `Sidebar.tsx` image onClick and onDragStart to use helper
+- [x] 1.3.6 Update `Canvas.tsx` onDrop handler to use helper
+- [x] 1.3.7 Test: Add landscape image (600x400), verify scaled to 400x267
+- [x] 1.3.8 Test: Add portrait image (400x600), verify scaled to 267x400
+- [x] 1.3.9 Test: Drop image at specific position, verify centered correctly
 
-## Phase 2: Enhanced Interaction (Important)
+## Phase 2: Enhanced Interaction (Important) ✅
 
-### 2.1 Add 8 Resize Handles
-- [ ] 2.1.1 Update `getHandleUnderMouse` in `useCanvasEngine` to detect 8 handles: nw, n, ne, e, se, s, sw, w
-- [ ] 2.1.2 Create `drawResizeHandles` function in render loop
-- [ ] 2.1.3 Draw circles for corner handles (nw, ne, se, sw)
-- [ ] 2.1.4 Draw pills for edge handles (n, e, s, w) - use `ctx.roundRect()` with horizontal/vertical orientation
-- [ ] 2.1.5 Add rotation support to hit detection (rotate mouse coords before checking)
-- [ ] 2.1.6 Update resize logic to handle single-axis changes for edge handles
-- [ ] 2.1.7 Test: Resize from north handle, verify only height changes
-- [ ] 2.1.8 Test: Resize from east handle, verify only width changes
-- [ ] 2.1.9 Test: Resize rotated element (45°), verify handles work correctly
+### 2.1 Add 8 Resize Handles ✅
+- [x] 2.1.1 Update `getHandleUnderMouse` in `useCanvasEngine` to detect 8 handles: nw, n, ne, e, se, s, sw, w
+- [x] 2.1.2 Create `drawResizeHandles` function in render loop
+- [x] 2.1.3 Draw circles for corner handles (nw, ne, se, sw)
+- [x] 2.1.4 Draw pills for edge handles (n, e, s, w) - use `ctx.roundRect()` with horizontal/vertical orientation
+- [x] 2.1.5 Add rotation support to hit detection (rotate mouse coords before checking)
+- [x] 2.1.6 Update resize logic to handle single-axis changes for edge handles
+- [x] 2.1.7 Test: Resize from north handle, verify only height changes
+- [x] 2.1.8 Test: Resize from east handle, verify only width changes
+- [x] 2.1.9 Test: Resize rotated element (45°), verify handles work correctly
 
-### 2.2 Element-to-Element Snapping
-- [ ] 2.2.1 Create `buildSnapTargets` function in `features/canvas/lib/snapping.ts`
-- [ ] 2.2.2 Iterate all non-selected elements, extract 6 snap points each (x, x+w/2, x+w, y, y+h/2, y+h)
-- [ ] 2.2.3 Add canvas center points (CANVAS_WIDTH/2, CANVAS_HEIGHT/2)
-- [ ] 2.2.4 Update drag logic to calculate snap offsets for both axes
-- [ ] 2.2.5 Find nearest snap target within 10px threshold
-- [ ] 2.2.6 Apply snap offset to drag delta
-- [ ] 2.2.7 Store active snap guide positions in ref: `activeSnapGuides.current = { x: [guide], y: [guide] }`
-- [ ] 2.2.8 Render snap guides as pink dashed lines in render loop
-- [ ] 2.2.9 Test: Drag rect near another rect's edge, verify snap and guide display
-- [ ] 2.2.10 Test: Drag rect to canvas center, verify snap to center guides
+### 2.2 Element-to-Element Snapping ✅
+- [x] 2.2.1 Create `buildSnapTargets` function in `features/canvas/lib/snapping.ts`
+- [x] 2.2.2 Iterate all non-selected elements, extract 6 snap points each (x, x+w/2, x+w, y, y+h/2, y+h)
+- [x] 2.2.3 Add canvas center points (CANVAS_WIDTH/2, CANVAS_HEIGHT/2)
+- [x] 2.2.4 Update drag logic to calculate snap offsets for both axes
+- [x] 2.2.5 Find nearest snap target within 10px threshold
+- [x] 2.2.6 Apply snap offset to drag delta
+- [x] 2.2.7 Store active snap guide positions in ref: `activeSnapGuides.current = { x: [guide], y: [guide] }`
+- [x] 2.2.8 Render snap guides as pink dashed lines in render loop
+- [x] 2.2.9 Test: Drag rect near another rect's edge, verify snap and guide display
+- [x] 2.2.10 Test: Drag rect to canvas center, verify snap to center guides
 
-### 2.3 Corner Resize Aspect Lock
-- [ ] 2.3.1 Detect corner handles: `const isCorner = handle?.length === 2` (nw, ne, se, sw)
-- [ ] 2.3.2 Calculate current aspect ratio: `const aspect = oldBoundsW / oldBoundsH`
-- [ ] 2.3.3 Determine dominant axis: `if (Math.abs(changeW) > Math.abs(changeH))`
-- [ ] 2.3.4 Apply aspect to secondary axis: `changeH = changeW / aspect` or `changeW = changeH * aspect`
-- [ ] 2.3.5 For multi-select, scale all elements proportionally
-- [ ] 2.3.6 Test: Resize rect from se corner, verify aspect maintained (100x100 → 200x200, not 200x150)
-- [ ] 2.3.7 Test: Resize multi-select from corner, verify all elements scale proportionally
+### 2.3 Corner Resize Aspect Lock ✅
+- [x] 2.3.1 Detect corner handles: `const isCorner = handle?.length === 2` (nw, ne, se, sw)
+- [x] 2.3.2 Calculate current aspect ratio: `const aspect = oldBoundsW / oldBoundsH`
+- [x] 2.3.3 Determine dominant axis: `if (Math.abs(changeW) > Math.abs(changeH))`
+- [x] 2.3.4 Apply aspect to secondary axis: `changeH = changeW / aspect` or `changeW = changeH * aspect`
+- [x] 2.3.5 For multi-select, scale all elements proportionally
+- [x] 2.3.6 Test: Resize rect from se corner, verify aspect maintained (100x100 → 200x200, not 200x150)
+- [x] 2.3.7 Test: Resize multi-select from corner, verify all elements scale proportionally
 
-### 2.4 Content Width/Height for Images
-- [ ] 2.4.1 Add `contentWidth?: number` to DesignElement interface in `shared/model/types.ts`
-- [ ] 2.4.2 Add `contentHeight?: number` to DesignElement interface
-- [ ] 2.4.3 Initialize contentWidth/Height on image add: `contentWidth: w, contentHeight: h`
-- [ ] 2.4.4 Update resize logic to maintain content aspect ratio
-- [ ] 2.4.5 For corner resize: scale content proportionally `nextCW = (init.cw || init.w) * scaleX`
-- [ ] 2.4.6 For edge resize: allow content overflow `targetCW = Math.max(init.cw, nextW)`, maintain aspect
-- [ ] 2.4.7 Update image rendering to use contentWidth/Height for drawImage
-- [ ] 2.4.8 Implement clipping rect to visible bounds
-- [ ] 2.4.9 Test: Add image 400x400, resize to 200x200 via edge handle, verify content shows 400x400 (zoom effect)
-- [ ] 2.4.10 Test: Resize back to 400x400, verify content fills frame
+### 2.4 Content Width/Height for Images ✅
+- [x] 2.4.1 Add `contentWidth?: number` to DesignElement interface in `shared/model/types.ts`
+- [x] 2.4.2 Add `contentHeight?: number` to DesignElement interface
+- [x] 2.4.3 Initialize contentWidth/Height on image add: `contentWidth: w, contentHeight: h`
+- [x] 2.4.4 Update resize logic to maintain content aspect ratio
+- [x] 2.4.5 For corner resize: scale content proportionally `nextCW = (init.cw || init.w) * scaleX`
+- [x] 2.4.6 For edge resize: allow content overflow `targetCW = Math.max(init.cw, nextW)`, maintain aspect
+- [x] 2.4.7 Update image rendering to use contentWidth/Height for drawImage
+- [x] 2.4.8 Implement clipping rect to visible bounds
+- [x] 2.4.9 Test: Add image 400x400, resize to 200x200 via edge handle, verify content shows 400x400 (zoom effect)
+- [x] 2.4.10 Test: Resize back to 400x400, verify content fills frame
 
-## Phase 3: Developer Experience (Nice-to-Have)
+## Phase 3: Developer Experience (Nice-to-Have) ✅
 
-### 3.1 Debug Mode
-- [ ] 3.1.1 Add `debugMode` state to App.tsx: `const [debugMode, setDebugMode] = useState(false)`
-- [ ] 3.1.2 Add Bug icon button to Header.tsx with toggle handler
-- [ ] 3.1.3 Create `DebugPanel` component in `features/canvas/ui/DebugPanel.tsx`
-- [ ] 3.1.4 Display metrics: element count, selected count, zoom %, pan x/y
-- [ ] 3.1.5 Display selected element details: ID, x, y, width, height, rotation
-- [ ] 3.1.6 Style as floating overlay (top-right, black/80, white text, monospace)
-- [ ] 3.1.7 Make pointer-events-none to avoid blocking clicks
-- [ ] 3.1.8 Test: Toggle debug mode, verify all metrics display correctly
-- [ ] 3.1.9 Test: Select element, verify details update
+### 3.1 Debug Mode ✅
+- [x] 3.1.1 Add `debugMode` state to App.tsx: `const [debugMode, setDebugMode] = useState(false)`
+- [x] 3.1.2 Add Bug icon button to Header.tsx with toggle handler
+- [x] 3.1.3 Create `DebugPanel` component in `features/canvas/ui/DebugPanel.tsx`
+- [x] 3.1.4 Display metrics: element count, selected count, zoom %, pan x/y
+- [x] 3.1.5 Display selected element details: ID, x, y, width, height, rotation
+- [x] 3.1.6 Style as floating overlay (top-right, black/80, white text, monospace)
+- [x] 3.1.7 Make pointer-events-none to avoid blocking clicks
+- [x] 3.1.8 Test: Toggle debug mode, verify all metrics display correctly
+- [x] 3.1.9 Test: Select element, verify details update
 
-### 3.2 Interactive Zoom Input
-- [ ] 3.2.1 Add `zoomInput` state to Header.tsx: `const [zoomInput, setZoomInput] = useState('100')`
-- [ ] 3.2.2 Add `inputRef` to zoom input element
-- [ ] 3.2.3 Sync zoomInput with state.zoom on change (if not focused)
-- [ ] 3.2.4 Add onChange handler: allow only digits, update zoomInput state
-- [ ] 3.2.5 Add onKeyDown handler: on Enter, parse int, clamp 10-500, dispatch SET_ZOOM, blur input
-- [ ] 3.2.6 Add onBlur handler: validate and restore valid value or current zoom
-- [ ] 3.2.7 Add focus helper: select all text on focus for quick replacement
-- [ ] 3.2.8 Test: Type "250" and press Enter, verify zoom applies to 250%
-- [ ] 3.2.9 Test: Type "999" and press Enter, verify clamped to 500%
-- [ ] 3.2.10 Test: Type "abc", verify reverts to current zoom on blur
+### 3.2 Interactive Zoom Input ✅
+- [x] 3.2.1 Add `zoomInput` state to Header.tsx: `const [zoomInput, setZoomInput] = useState('100')`
+- [x] 3.2.2 Add `inputRef` to zoom input element
+- [x] 3.2.3 Sync zoomInput with state.zoom on change (if not focused)
+- [x] 3.2.4 Add onChange handler: allow only digits, update zoomInput state
+- [x] 3.2.5 Add onKeyDown handler: on Enter, parse int, clamp 10-500, dispatch SET_ZOOM, blur input
+- [x] 3.2.6 Add onBlur handler: validate and restore valid value or current zoom
+- [x] 3.2.7 Add focus helper: select all text on focus for quick replacement
+- [x] 3.2.8 Test: Type "250" and press Enter, verify zoom applies to 250%
+- [x] 3.2.9 Test: Type "999" and press Enter, verify clamped to 500%
+- [x] 3.2.10 Test: Type "abc", verify reverts to current zoom on blur
 
 ## Phase 4: Testing & Validation
 
