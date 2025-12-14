@@ -138,6 +138,7 @@ interface AppState {
   isSpacePressed: boolean;
   isExporting: boolean;
   exportProgress: number;
+  clipboard: DesignElement[]; // Copied elements for paste
 }
 
 export type {
